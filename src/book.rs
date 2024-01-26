@@ -1,8 +1,7 @@
-use crate::username::Username;
+use crate::order::Order;
+use std::collections::BinaryHeap;
 
-pub struct Book {}
-
-struct Order {
-    order_id: String,
-    owner: Username,
+pub struct Book {
+    bids: BinaryHeap<Order>,
+    asks: BinaryHeap<Order>,
 }

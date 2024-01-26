@@ -3,6 +3,7 @@ use crate::observations::Observation;
 use crate::recovery::Recovery;
 use crate::username::Username;
 use reqwest::Error;
+use std::collections::HashMap;
 
 macro_rules! url {
     ($auto_trader:expr, $port:expr, $endpoint:expr) => {
@@ -17,20 +18,28 @@ trait ConstantPorts {
 }
 
 pub struct AutoTrader {
-    pub username: Username,
-    pub password: String,
-    pub host: String,
+    username: Username,
+    password: String,
+    host: String,
+    books: HashMap<String, Book>,
 }
 
 impl ConstantPorts for AutoTrader {
     const OBSERVATION_PORT: u16 = 8090;
-
     const EXECUTION_PORT: u16 = 9050;
-
     const FEED_RECOVERY_PORT: u16 = 9000;
 }
 
 impl AutoTrader {
+    pub fn new(username: Username, password: String, host: String) -> AutoTrader {
+        return AutoTrader {
+            username,
+            password,
+            host,
+            books: HashMap::new(),
+        };
+    }
+
     pub async fn startup(&self) -> Result<(), Error> {
         self.recover().await
     }
