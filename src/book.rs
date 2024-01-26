@@ -1,10 +1,8 @@
 use crate::username::Username;
 
-pub struct Book {
-
-}
+pub struct Book {}
 
 struct Order {
-	order_id: String,
-	owner: Username,
+    order_id: String,
+    owner: Username,
 }

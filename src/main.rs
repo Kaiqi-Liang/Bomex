@@ -1,6 +1,8 @@
 use reqwest::Error;
 mod autotrader;
 mod book;
+mod observations;
+mod recovery;
 mod username;
 
 #[tokio::main]
