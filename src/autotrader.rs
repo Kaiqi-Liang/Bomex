@@ -2,12 +2,18 @@ use crate::book::Book;
 use crate::observations::Observation;
 use crate::recovery::Recovery;
 use crate::username::Username;
+use futures_util::StreamExt;
 use reqwest::Error;
 use std::collections::HashMap;
+use tokio::io::AsyncWriteExt;
+use tokio_tungstenite::connect_async;
 
 macro_rules! url {
-    ($auto_trader:expr, $port:expr, $endpoint:expr) => {
-        format!("http://{}:{}/{}", $auto_trader.host, $port, $endpoint)
+    ($protocol:expr, $auto_trader:expr, $port:expr, $endpoint:expr) => {
+        format!(
+            "{}://{}:{}/{}",
+            $protocol, $auto_trader.host, $port, $endpoint
+        )
     };
 }
 
@@ -45,11 +51,15 @@ impl AutoTrader {
     }
 
     async fn recover(&self) -> Result<(), Error> {
-        let response: Vec<Recovery> =
-            reqwest::get(url!(self, AutoTrader::FEED_RECOVERY_PORT, "recover"))
-                .await?
-                .json()
-                .await?;
+        let response: Vec<Recovery> = reqwest::get(url!(
+            "http",
+            self,
+            AutoTrader::FEED_RECOVERY_PORT,
+            "recover"
+        ))
+        .await?
+        .json()
+        .await?;
         for message in response {
             match message {
                 Recovery::Future(_) => todo!(),
@@ -61,9 +71,25 @@ impl AutoTrader {
         Ok(())
     }
 
+    pub async fn poll(&self) {
+        let (stream, _) = connect_async(url!(
+            "ws",
+            self,
+            AutoTrader::FEED_RECOVERY_PORT,
+            "information"
+        ))
+        .await
+        .expect("Failed to connect to WebSocket");
+        let (_, read) = stream.split();
+        let _ = read.for_each(|message| async {
+            let data = message.unwrap().into_data();
+            tokio::io::stdout().write_all(&data).await.unwrap();
+        });
+    }
+
     pub async fn refresh_latest_observations(&self) -> Result<(), Error> {
         let response: Vec<Observation> =
-            reqwest::get(url!(self, AutoTrader::OBSERVATION_PORT, "current"))
+            reqwest::get(url!("http", self, AutoTrader::OBSERVATION_PORT, "current"))
                 .await?
                 .json()
                 .await?;

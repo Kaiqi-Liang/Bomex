@@ -15,5 +15,6 @@ async fn main() -> Result<(), Error> {
     );
     trader.startup().await?;
     trader.refresh_latest_observations().await?;
+    trader.poll();
     Ok(())
 }
