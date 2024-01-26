@@ -1,41 +1,56 @@
-use crate::username::Username;
-use std::cmp::Ordering;
+use crate::{orderbook::Side, username::Username};
+use serde::Serialize;
 
-#[derive(Debug, PartialEq)]
-enum Side {
-    BUY,
-    SELL,
+#[derive(Serialize)]
+pub struct Order<'a> {
+    pub username: &'a Username,
+    pub password: &'a str,
+    pub message: Message<'a>,
 }
 
-#[derive(Debug)]
-pub struct Order {
-    order_id: String,
-    owner: Username,
-    price: f64,
-    side: Side,
+#[derive(Serialize)]
+pub enum Message<'a> {
+    Add(AddMessage<'a>),
+    Delete(DeleteMessage<'a>),
+    BulkDelete(BulkDeleteMessage<'a>),
 }
 
-impl Ord for Order {
-    fn cmp(&self, other: &Self) -> Ordering {
-        assert_eq!(self.side, other.side);
-        match self.side {
-            Side::BUY => self.price.partial_cmp(&other.price),
-            Side::SELL => other.price.partial_cmp(&self.price),
-        }
-        .unwrap()
-    }
+#[derive(Serialize)]
+pub struct AddMessage<'a> {
+    #[serde(rename = "type")]
+    pub message_type: MessageType,
+    pub product: &'a str,
+    pub price: f64,
+    pub side: Side,
+    pub volume: u32,
+    pub order_type: OrderType,
 }
 
-impl PartialOrd for Order {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+#[derive(Serialize)]
+pub struct DeleteMessage<'a> {
+    #[serde(rename = "type")]
+    pub message_type: MessageType,
+    pub product: &'a str,
+    pub id: &'a str,
 }
 
-impl PartialEq for Order {
-    fn eq(&self, other: &Self) -> bool {
-        self.price == other.price
-    }
+#[derive(Serialize)]
+pub struct BulkDeleteMessage<'a> {
+    #[serde(rename = "type")]
+    pub message_type: MessageType,
+    pub product: &'a str,
 }
 
-impl Eq for Order {}
+#[derive(Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum MessageType {
+    Add,
+    Delete,
+    BulkDelete,
+}
+
+#[derive(Serialize)]
+pub enum OrderType {
+    Day,
+    Ioc,
+}

@@ -1,5 +1,5 @@
 [package]
-name = "observations"
+name = "bomex"
 version = "0.1.0"
 edition = "2021"
 
