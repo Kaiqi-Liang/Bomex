@@ -1,6 +1,7 @@
 use reqwest::Error;
 use serde::{Deserialize, Deserializer};
 use crate::book::Book;
+use crate::username::Username;
 
 trait ConstantPorts {
     const OBSERVATION_PORT: u16;
@@ -9,7 +10,7 @@ trait ConstantPorts {
 }
 
 pub struct AutoTrader {
-    pub username: String,
+    pub username: Username,
     pub password: String,
     pub host: String,
 }
