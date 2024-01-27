@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer};
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(untagged)]
 enum StationId {
     SydAirport = 66037,
@@ -9,7 +9,7 @@ enum StationId {
     CapeByron = 58216,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "UPPERCASE", tag = "type")]
 pub enum Recovery {
     Future(FutureRecovery),
@@ -18,7 +18,7 @@ pub enum Recovery {
     Index(IndexRecovery),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FutureRecovery {
     product: String,
@@ -38,13 +38,13 @@ pub struct FutureRecovery {
     sequence: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct TradeRecovery {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct AddedRecovery {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRecovery {
     index_id: u32,

@@ -57,11 +57,11 @@ impl ConstantPorts for AutoTrader {
 
 impl AutoTrader {
     pub fn new(username: Username, password: String) -> AutoTrader {
-        return AutoTrader {
+        AutoTrader {
             username,
             password,
             books: HashMap::new(),
-        };
+        }
     }
 
     pub async fn startup(&self) -> Result<(), reqwest::Error> {
