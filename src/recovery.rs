@@ -1,5 +1,7 @@
 use serde::{Deserialize, Deserializer};
 
+use crate::{orderbook::{Price, Side, Volume}, username::Username};
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum StationId {
@@ -21,28 +23,38 @@ pub enum Recovery {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FutureRecovery {
-    product: String,
-    station_id: StationId,
-    station_name: String,
-    expiry: String,
-    halt_time: String,
-    unit: String,
-    strike: f32,
-    aggressive_fee: f32,
-    passive_fee: f32,
-    announcement_fee: f32,
-    incentive_rebate_per_unit: f32,
-    max_incentive_rebate: f32,
-    broker_fee: f32,
-    timestamp: u64,
-    sequence: u32,
+    pub product: String,
+    pub station_id: StationId,
+    pub station_name: String,
+    pub expiry: String,
+    pub halt_time: String,
+    pub unit: String,
+    pub strike: Price,
+    pub aggressive_fee: Price,
+    pub passive_fee: Price,
+    pub announcement_fee: Price,
+    pub incentive_rebate_per_unit: Price,
+    pub max_incentive_rebate: Price,
+    pub broker_fee: Price,
+    pub timestamp: u64,
+    pub sequence: u32,
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TradeRecovery {}
 
 #[derive(Deserialize)]
-pub struct AddedRecovery {}
+#[serde(rename_all = "camelCase")]
+pub struct AddedRecovery {
+    pub product: String,
+    pub order_id: String,
+    pub side: Side,
+    pub price: Price,
+    pub filled_volume: Volume,
+    pub resting_volume: Volume,
+    pub owner: Username,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

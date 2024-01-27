@@ -1,4 +1,4 @@
-use crate::{orderbook::Side, username::Username};
+use crate::{orderbook::{Price, Side, Volume}, username::Username};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -20,9 +20,9 @@ pub struct AddMessage<'a> {
     #[serde(rename = "type")]
     pub message_type: MessageType,
     pub product: &'a str,
-    pub price: f64,
+    pub price: Price,
     pub side: Side,
-    pub volume: u32,
+    pub volume: Volume,
     pub order_type: OrderType,
 }
 

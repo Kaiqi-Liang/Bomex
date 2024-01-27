@@ -1,5 +1,5 @@
 use crate::order::{AddMessage, BulkDeleteMessage, DeleteMessage, Message, MessageType, OrderType};
-use crate::orderbook::{Book, Side};
+use crate::orderbook::{Book, Price, Side, Volume};
 use crate::recovery::Recovery;
 use crate::username::Username;
 use crate::{observations::Observation, order::Order};
@@ -64,24 +64,35 @@ impl AutoTrader {
         }
     }
 
-    pub async fn startup(&self) -> Result<(), reqwest::Error> {
+    pub async fn startup(&mut self) -> Result<(), reqwest::Error> {
         self.recover().await
     }
 
-    async fn recover(&self) -> Result<(), reqwest::Error> {
-        let response: Vec<Recovery> = reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
+    async fn recover(&mut self) -> Result<(), reqwest::Error> {
+        let messages: Vec<Recovery> = reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
             .await?
             .json()
             .await?;
-        for message in response {
+        self.parse_feed_messages(messages);
+        Ok(())
+    }
+
+    fn parse_feed_messages(&mut self, messages: Vec<Recovery>) {
+        for message in messages {
             match message {
-                Recovery::Future(_) => todo!(),
-                Recovery::Trade(_) => todo!(),
-                Recovery::Added(_) => todo!(),
-                Recovery::Index(_) => todo!(),
+                Recovery::Future(future) => {
+                    self.books
+                        .insert(future.product.to_owned(), Book::new(future.product));
+                }
+                Recovery::Trade(trade) => {}
+                Recovery::Added(added) => {
+                    self.books
+                        .get_mut(&added.product)
+                        .expect("Added message's product is not in the books").add_order(added);
+                }
+                Recovery::Index(index) => {}
             }
         }
-        Ok(())
     }
 
     pub async fn poll(&self) -> Result<(), tungstenite::Error> {
@@ -98,9 +109,9 @@ impl AutoTrader {
     pub async fn place_order(
         &self,
         product: &str,
-        price: f64,
+        price: Price,
         side: Side,
-        volume: u32,
+        volume: Volume,
         order_type: OrderType,
     ) -> Result<(), reqwest::Error> {
         send_order!(&Order {
@@ -150,6 +161,14 @@ impl AutoTrader {
                 .json()
                 .await?;
         println!("{response:#?}");
+        Ok(())
+    }
+
+    pub async fn shutdown(self) -> Result<(), Box<dyn std::error::Error>> {
+        self.poll().await?;
+        for id in self.books.keys() {
+            self.cancel_all_orders_in_book(id).await?;
+        }
         Ok(())
     }
 }
