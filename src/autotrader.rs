@@ -1,7 +1,8 @@
 use crate::{
     observations::Observation,
     order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, Order, OrderType},
-    orderbook::{Book, Price, Side, Volume},
+    orderbook::Book,
+    types::{Price, Side, Volume},
     username::Username,
 };
 use futures_util::StreamExt;
@@ -94,11 +95,11 @@ impl AutoTrader {
                     self.books
                         .insert(future.product.to_owned(), Book::new(future.product));
                 }
-                crate::feed::Message::Trade(trade) => {
-                    get_book!(self.books, trade).trade(trade);
-                }
                 crate::feed::Message::Added(added) => {
-                    get_book!(self.books, added).add_order(added);
+                    get_book!(self.books, added).add_order(added, &self.username);
+                }
+                crate::feed::Message::Trade(trade) => {
+                    get_book!(self.books, trade).trade(trade, &self.username);
                 }
                 crate::feed::Message::Index(index) => todo!(),
             }

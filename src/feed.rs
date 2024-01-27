@@ -1,8 +1,8 @@
-use serde::{de, Deserialize, Deserializer};
 use crate::{
-    orderbook::{Price, Side, Volume},
+    types::{Price, Side, Volume},
     username::Username,
 };
+use serde::{Deserialize, Deserializer};
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -17,8 +17,8 @@ enum StationId {
 #[serde(rename_all = "UPPERCASE", tag = "type")]
 pub enum Message {
     Future(FutureMessage),
-    Trade(TradeMessage),
     Added(AddedMessage),
+    Trade(TradeMessage),
     Index(IndexMessage),
 }
 
@@ -30,20 +30,13 @@ pub struct FutureMessage {
     pub station_name: String,
     pub expiry: String,
     pub halt_time: String,
-    pub unit: String,
-    pub strike: Price,
-    pub aggressive_fee: Price,
-    pub passive_fee: Price,
-    pub announcement_fee: Price,
-    pub incentive_rebate_per_unit: Price,
-    pub max_incentive_rebate: Price,
-    pub broker_fee: Price,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeMessage {
     pub product: String,
+    #[serde(deserialize_with = "deserialize_price")]
     pub price: Price,
     pub volume: Volume,
     pub buyer: Username,
@@ -68,6 +61,7 @@ pub struct AddedMessage {
     pub product: String,
     pub order_id: String,
     pub side: Side,
+    #[serde(deserialize_with = "deserialize_price")]
     pub price: Price,
     pub filled_volume: Volume,
     pub resting_volume: Volume,
@@ -81,6 +75,20 @@ pub struct IndexMessage {
     index_name: String,
     #[serde(deserialize_with = "deserialize_station_ids")]
     station_ids: Vec<StationId>,
+}
+
+fn deserialize_price<'de, D>(deserializer: D) -> Result<Price, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let price: f64 = Deserialize::deserialize(deserializer)?;
+    Ok((price * 100.0).into())
+}
+
+impl From<f64> for Price {
+    fn from(value: f64) -> Self {
+        Price::from(value)
+    }
 }
 
 fn deserialize_station_ids<'de, D>(deserializer: D) -> Result<Vec<StationId>, D::Error>

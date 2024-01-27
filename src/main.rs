@@ -3,7 +3,7 @@ mod feed;
 mod observations;
 mod order;
 mod orderbook;
-mod pnl;
+mod types;
 mod username;
 
 #[tokio::main]
