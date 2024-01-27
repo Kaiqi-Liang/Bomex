@@ -1,5 +1,8 @@
-use crate::{orderbook::{Price, Side, Volume}, username::Username};
 use serde::Serialize;
+use crate::{
+    orderbook::{Price, Side, Volume},
+    username::Username,
+};
 
 #[derive(Serialize)]
 pub struct Order<'a> {

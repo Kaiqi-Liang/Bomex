@@ -1,10 +1,10 @@
 mod autotrader;
+mod feed;
 mod observations;
 mod order;
 mod orderbook;
-mod recovery;
-mod username;
 mod pnl;
+mod username;
 
 #[tokio::main]
 async fn main() {
@@ -17,6 +17,11 @@ async fn main() {
         .startup()
         .await
         .expect("Failed to connect to the feed and recover from the latest snapshot");
+
+    // tokio::spawn(async {
+    //     tokio::signal::ctrl_c().await;
+    //     trader.shutdown();
+    // });
 
     loop {
         let _ = trader.refresh_latest_observations().await;

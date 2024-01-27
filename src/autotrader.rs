@@ -1,8 +1,9 @@
-use crate::order::{AddMessage, BulkDeleteMessage, DeleteMessage, Message, MessageType, OrderType};
-use crate::orderbook::{Book, Price, Side, Volume};
-use crate::recovery::Recovery;
-use crate::username::Username;
-use crate::{observations::Observation, order::Order};
+use crate::{
+    observations::Observation,
+    order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, Order, OrderType},
+    orderbook::{Book, Price, Side, Volume},
+    username::Username,
+};
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use tokio::io::AsyncWriteExt;
@@ -32,6 +33,14 @@ macro_rules! send_order {
             .await?
             .json()
             .await?
+    };
+}
+
+macro_rules! get_book {
+    ($books:expr, $message:ident) => {
+        $books
+            .get_mut(&$message.product)
+            .expect("Product is not in the books")
     };
 }
 
@@ -69,28 +78,29 @@ impl AutoTrader {
     }
 
     async fn recover(&mut self) -> Result<(), reqwest::Error> {
-        let messages: Vec<Recovery> = reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
-            .await?
-            .json()
-            .await?;
+        let messages: Vec<crate::feed::Message> =
+            reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
+                .await?
+                .json()
+                .await?;
         self.parse_feed_messages(messages);
         Ok(())
     }
 
-    fn parse_feed_messages(&mut self, messages: Vec<Recovery>) {
+    fn parse_feed_messages(&mut self, messages: Vec<crate::feed::Message>) {
         for message in messages {
             match message {
-                Recovery::Future(future) => {
+                crate::feed::Message::Future(future) => {
                     self.books
                         .insert(future.product.to_owned(), Book::new(future.product));
                 }
-                Recovery::Trade(trade) => {}
-                Recovery::Added(added) => {
-                    self.books
-                        .get_mut(&added.product)
-                        .expect("Added message's product is not in the books").add_order(added);
+                crate::feed::Message::Trade(trade) => {
+                    get_book!(self.books, trade).trade(trade);
                 }
-                Recovery::Index(index) => {}
+                crate::feed::Message::Added(added) => {
+                    get_book!(self.books, added).add_order(added);
+                }
+                crate::feed::Message::Index(index) => todo!(),
             }
         }
     }
@@ -117,7 +127,7 @@ impl AutoTrader {
         send_order!(&Order {
             username: &self.username,
             password: &self.password,
-            message: Message::Add(AddMessage {
+            message: crate::order::Message::Add(AddMessage {
                 message_type: MessageType::Add,
                 product,
                 price,
@@ -133,7 +143,7 @@ impl AutoTrader {
         send_order!(&Order {
             username: &self.username,
             password: &self.password,
-            message: Message::Delete(DeleteMessage {
+            message: crate::order::Message::Delete(DeleteMessage {
                 message_type: MessageType::Delete,
                 product,
                 id
@@ -146,7 +156,7 @@ impl AutoTrader {
         send_order!(&Order {
             username: &self.username,
             password: &self.password,
-            message: Message::BulkDelete(BulkDeleteMessage {
+            message: crate::order::Message::BulkDelete(BulkDeleteMessage {
                 message_type: MessageType::BulkDelete,
                 product
             })
