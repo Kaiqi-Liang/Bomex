@@ -187,7 +187,9 @@ impl AutoTrader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::orderbook::Position;
     use serde_json::{from_value, json};
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_parse_feed_messages() {
@@ -197,30 +199,55 @@ mod tests {
         );
         assert_eq!(trader.books, HashMap::new());
         let product = String::from("F_SOP_APP0104T0950");
+        let order_id = String::from("02a70d7e-9178-46df-8f77-a996f2e78bd8");
         let message = json!([
             {
-              "type": "FUTURE",
-              "product": product,
-              "stationId": 66212,
-              "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
-              "expiry": "2024-01-04 09:50+1100",
-              "haltTime": "2024-01-04 09:50+1100",
-              "unit": "APPARENT_TEMP",
-              "strike": 0,
-              "aggressiveFee": 0,
-              "passiveFee": 0,
-              "announcementFee": 0,
-              "incentiveRebatePerUnit": 0,
-              "maxIncentiveRebate": 0,
-              "brokerFee": 0,
-              "timestamp": 1704321903118u64,
-              "sequence": 1,
-            }
+                "type": "FUTURE",
+                "product": product,
+                "stationId": 66212,
+                "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
+                "expiry": "2024-01-04 09:50+1100",
+                "haltTime": "2024-01-04 09:50+1100",
+                "unit": "APPARENT_TEMP",
+                "strike": 0,
+                "aggressiveFee": 0,
+                "passiveFee": 0,
+                "announcementFee": 0,
+                "incentiveRebatePerUnit": 0,
+                "maxIncentiveRebate": 0,
+                "brokerFee": 0,
+                "sequence": 1,
+            },
+            {
+                "type": "ADDED",
+                "product": product,
+                "id": order_id,
+                "side": "BUY",
+                "price": 21.13,
+                "filled": 0,
+                "resting": 20,
+                "owner": "cchuah",
+                "sequence": 2
+            },
         ]);
         trader.parse_feed_messages(from_value(message).expect("Invalid JSON"));
         assert_eq!(
             trader.books,
-            HashMap::from([(product.clone(), Book::new(product),)])
+            HashMap::from([(
+                product.clone(),
+                Book {
+                    bids: BTreeMap::from([(Price(2113), Volume(20))]),
+                    asks: BTreeMap::new(),
+                    orders: HashMap::from([(order_id, Price(2113))]),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(0),
+                        position: 0,
+                    },
+                    is_active: true,
+                    product_id: product,
+                },
+            )])
         );
     }
 }

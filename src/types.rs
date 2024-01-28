@@ -9,6 +9,7 @@ macro_rules! toUnderlying {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum Side {
     Buy,
     Sell,

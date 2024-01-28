@@ -7,12 +7,12 @@ use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, PartialEq)]
 pub struct Book {
-    bids: BTreeMap<Price, Volume>,
-    asks: BTreeMap<Price, Volume>,
-    orders: HashMap<String, Price>,
-    position: Position,
-    is_active: bool,
-    product_id: String,
+    pub bids: BTreeMap<Price, Volume>,
+    pub asks: BTreeMap<Price, Volume>,
+    pub orders: HashMap<String, Price>,
+    pub position: Position,
+    pub is_active: bool,
+    pub product_id: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -45,12 +45,12 @@ impl Book {
             (&mut self.asks, &mut self.position.ask_exposure)
         };
         if added.owner == *username {
-            *exposure += added.resting_volume;
+            *exposure += added.resting;
         }
         side.entry(added.price)
-            .and_modify(|volume| *volume += added.resting_volume)
-            .or_insert(added.resting_volume);
-        self.orders.insert(added.order_id, added.price);
+            .and_modify(|volume| *volume += added.resting)
+            .or_insert(added.resting);
+        self.orders.insert(added.id, added.price);
     }
 
     pub fn trade(&mut self, trade: TradeMessage, username: &Username) {

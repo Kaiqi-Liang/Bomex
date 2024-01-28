@@ -27,11 +27,11 @@ pub struct FutureMessage {
 #[serde(rename_all = "camelCase")]
 pub struct AddedMessage {
     pub product: String,
-    pub order_id: String,
+    pub id: String,
     pub side: Side,
     pub price: Price,
-    pub filled_volume: Volume,
-    pub resting_volume: Volume,
+    pub filled: Volume,
+    pub resting: Volume,
     pub owner: Username,
 }
 
