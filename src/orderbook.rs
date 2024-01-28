@@ -12,7 +12,6 @@ pub struct Book {
     pub orders: HashMap<String, Price>,
     pub position: Position,
     pub is_active: bool,
-    pub product_id: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -23,7 +22,7 @@ pub struct Position {
 }
 
 impl Book {
-    pub fn new(product_id: String) -> Book {
+    pub fn new() -> Book {
         Book {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
@@ -34,7 +33,6 @@ impl Book {
                 position: 0,
             },
             is_active: true,
-            product_id,
         }
     }
 

@@ -18,7 +18,7 @@ async fn main() {
         .await
         .expect("Failed to connect to the feed and recover from the latest snapshot");
 
-    // tokio::spawn(async {
+    // tokio::spawn(async move {
     //     tokio::signal::ctrl_c().await;
     //     trader.shutdown();
     // });

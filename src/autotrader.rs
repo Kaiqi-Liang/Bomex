@@ -7,7 +7,6 @@ use crate::{
 };
 use futures_util::StreamExt;
 use std::collections::HashMap;
-use tokio::io::AsyncWriteExt;
 use tokio_tungstenite::{connect_async, tungstenite};
 
 macro_rules! url {
@@ -84,35 +83,35 @@ impl AutoTrader {
                 .await?
                 .json()
                 .await?;
-        self.parse_feed_messages(messages);
+        for message in messages {
+            self.parse_feed_message(message);
+        }
         Ok(())
     }
 
-    fn parse_feed_messages(&mut self, messages: Vec<crate::feed::Message>) {
-        for message in messages {
-            match message {
-                crate::feed::Message::Future(future) => {
-                    self.books
-                        .insert(future.product.clone(), Book::new(future.product));
-                }
-                crate::feed::Message::Added(added) => {
-                    get_book!(self.books, added).add_order(added, &self.username);
-                }
-                crate::feed::Message::Trade(trade) => {
-                    get_book!(self.books, trade).trade(trade, &self.username);
-                }
-                crate::feed::Message::Index(index) => todo!(),
+    fn parse_feed_message(&mut self, message: crate::feed::Message) {
+        match message {
+            crate::feed::Message::Future(future) => {
+                self.books.insert(future.product, Book::new());
             }
+            crate::feed::Message::Added(added) => {
+                get_book!(self.books, added).add_order(added, &self.username);
+            }
+            crate::feed::Message::Trade(trade) => {
+                get_book!(self.books, trade).trade(trade, &self.username);
+            }
+            crate::feed::Message::Index(index) => todo!(),
         }
     }
 
-    pub async fn poll(&self) -> Result<(), tungstenite::Error> {
+    pub async fn poll(&mut self) -> Result<(), tungstenite::Error> {
         let (stream, _) =
             connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information")).await?;
         let (_, read) = stream.split();
         let _ = read.for_each(|message| async {
-            let data = message.unwrap().into_data();
-            tokio::io::stdout().write_all(&data).await.unwrap();
+            let message: crate::feed::Message =
+                serde_json::from_slice(&message.unwrap().into_data()).expect("Failed to parse feed message");
+            // self.parse_feed_message(message);
         });
         Ok(())
     }
@@ -175,7 +174,7 @@ impl AutoTrader {
         Ok(())
     }
 
-    pub async fn shutdown(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn shutdown(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.poll().await?;
         for id in self.books.keys() {
             self.cancel_all_orders_in_book(id).await?;
@@ -191,61 +190,143 @@ mod tests {
     use serde_json::{from_value, json};
     use std::collections::BTreeMap;
 
+    macro_rules! parse_json {
+        ($trader:ident, $json:tt) => {
+            $trader.parse_feed_message(from_value(json!($json)).expect("Failed to parse feed message"));
+        };
+    }
+
     #[test]
-    fn test_parse_feed_messages() {
+    fn test_parse_feed_message() {
         let mut trader = AutoTrader::new(
             Username::KLiang,
             String::from("de7d8b078d63d5d9ad4e9df2f542eca6"),
         );
         assert_eq!(trader.books, HashMap::new());
+
         let product = String::from("F_SOP_APP0104T0950");
-        let order_id = String::from("02a70d7e-9178-46df-8f77-a996f2e78bd8");
-        let message = json!([
-            {
-                "type": "FUTURE",
-                "product": product,
-                "stationId": 66212,
-                "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
-                "expiry": "2024-01-04 09:50+1100",
-                "haltTime": "2024-01-04 09:50+1100",
-                "unit": "APPARENT_TEMP",
-                "strike": 0,
-                "aggressiveFee": 0,
-                "passiveFee": 0,
-                "announcementFee": 0,
-                "incentiveRebatePerUnit": 0,
-                "maxIncentiveRebate": 0,
-                "brokerFee": 0,
-                "sequence": 1,
-            },
-            {
-                "type": "ADDED",
-                "product": product,
-                "id": order_id,
-                "side": "BUY",
-                "price": 21.13,
-                "filled": 0,
-                "resting": 20,
-                "owner": "cchuah",
-                "sequence": 2
-            },
-        ]);
-        trader.parse_feed_messages(from_value(message).expect("Invalid JSON"));
+        let order1 = String::from("02a70d7e-9178-46df-8f77-a996f2e78bd8");
+        let order2 = String::from("defb5c1b-e580-4a8e-a668-3847f5ccad16");
+        let order3 = String::from("678306ab-9771-4e53-9c61-ba3451847d74");
+        let order4 = String::from("cbaf100a-b9c5-4a77-8499-3a6b176e157f");
+        let order5 = String::from("af0261ad-cb51-44f6-842d-520afd2ec392");
+
+        parse_json!(trader, {
+            "type": "FUTURE",
+            "product": product,
+            "stationId": 66212,
+            "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
+            "expiry": "2024-01-04 09:50+1100",
+            "haltTime": "2024-01-04 09:50+1100",
+            "unit": "APPARENT_TEMP",
+            "strike": 0,
+            "aggressiveFee": 0,
+            "passiveFee": 0,
+            "announcementFee": 0,
+            "incentiveRebatePerUnit": 0,
+            "maxIncentiveRebate": 0,
+            "brokerFee": 0,
+            "sequence": 1,
+        });
+
+        parse_json!(trader, {
+            "type": "ADDED",
+            "product": product,
+            "id": order1,
+            "side": "BUY",
+            "price": 24.31,
+            "filled": 0,
+            "resting": 20,
+            "owner": "cchuah",
+            "sequence": 2
+        });
         assert_eq!(
             trader.books,
             HashMap::from([(
                 product.clone(),
                 Book {
-                    bids: BTreeMap::from([(Price(2113), Volume(20))]),
+                    bids: BTreeMap::from([(Price(2431), Volume(20))]),
                     asks: BTreeMap::new(),
-                    orders: HashMap::from([(order_id, Price(2113))]),
+                    orders: HashMap::from([(order1.clone(), Price(2431))]),
                     position: Position {
                         bid_exposure: Volume(0),
                         ask_exposure: Volume(0),
                         position: 0,
                     },
                     is_active: true,
-                    product_id: product,
+                },
+            )])
+        );
+
+        parse_json!(trader, {
+            "type": "ADDED",
+            "product": product,
+            "id": order2,
+            "side": "BUY",
+            "price": 24.31,
+            "filled": 0,
+            "resting": 15,
+            "owner": "cchuah",
+            "sequence": 3
+        });
+
+        parse_json!(trader, {
+            "type": "ADDED",
+            "product": product,
+            "id": order3,
+            "side": "SELL",
+            "price": 33.29,
+            "filled": 0,
+            "resting": 20,
+            "owner": "cchuah",
+            "sequence": 4
+        });
+
+        parse_json!(trader, {
+            "type": "ADDED",
+            "product": product,
+            "id": order4,
+            "side": "SELL",
+            "price": 31.01,
+            "filled": 0,
+            "resting": 50,
+            "owner": "rcurby",
+            "sequence": 5
+        });
+
+        parse_json!(trader, {
+            "type": "TRADE",
+            "product": product,
+            "price": 28.35,
+            "volume": 5,
+            "buyer": "fmavlono",
+            "seller": "pshannon",
+            "tradeType": "SELL_AGGRESSOR",
+            "passiveOrder": order2,
+            "passiveOrderRemaining": 0,
+            "aggressorOrder": order5,
+            "sequence": 6
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                product.clone(),
+                Book {
+                    bids: BTreeMap::from([(Price(2431), Volume(35)),]),
+                    asks: BTreeMap::from([(Price(3329), Volume(20)), (Price(3101), Volume(50)),]),
+                    orders: HashMap::from([
+                        (order1.clone(), Price(2431)),
+                        (order2.clone(), Price(2431)),
+                        (order3.clone(), Price(3329)),
+                        (order4.clone(), Price(3101)),
+                    ]),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(0),
+                        position: 0,
+                    },
+                    is_active: true,
                 },
             )])
         );
