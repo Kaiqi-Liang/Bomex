@@ -7,7 +7,7 @@ use crate::{
 };
 use futures_util::StreamExt;
 use std::collections::HashMap;
-use tokio_tungstenite::{connect_async, tungstenite};
+use tokio_tungstenite::connect_async;
 
 macro_rules! url {
     ($port:expr, $endpoint:expr) => {
@@ -113,18 +113,15 @@ impl AutoTrader {
         }
     }
 
-    pub async fn poll(&mut self) -> Result<(), tungstenite::Error> {
-        let (stream, _) =
+    pub async fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, response) =
             connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information")).await?;
-        let (_, read) = stream.split();
-        read.for_each(|message| async {
-            #[allow(unused)]
-            let message: crate::feed::Message =
-                serde_json::from_slice(&message.unwrap().into_data())
-                    .expect("Failed to parse feed message");
-            // self.parse_feed_message(message);
-        })
-        .await;
+        println!("Server responded with headers: {:?}", response.headers());
+
+        let (_, mut read) = stream.split();
+        while let Some(message) = read.next().await {
+            self.parse_feed_message(serde_json::from_slice(&message?.into_data())?);
+        }
         Ok(())
     }
 
