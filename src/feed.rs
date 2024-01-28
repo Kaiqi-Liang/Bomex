@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer};
 pub enum Message {
     Future(FutureMessage),
     Added(AddedMessage),
+    Deleted(DeletedMessage),
     Trade(TradeMessage),
     Index(IndexMessage),
 }
@@ -24,7 +25,6 @@ pub struct FutureMessage {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AddedMessage {
     pub product: String,
     pub id: String,
@@ -33,6 +33,13 @@ pub struct AddedMessage {
     pub filled: Volume,
     pub resting: Volume,
     pub owner: Username,
+}
+
+#[derive(Deserialize)]
+pub struct DeletedMessage {
+    pub product: String,
+    pub id: String,
+    pub side: Side,
 }
 
 #[derive(Deserialize)]

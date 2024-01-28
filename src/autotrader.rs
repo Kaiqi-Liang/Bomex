@@ -1,6 +1,6 @@
 use crate::{
     observations::Observation,
-    order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, Order, OrderType},
+    order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, OrderType},
     orderbook::Book,
     types::{Price, Side, Volume},
     username::Username,
@@ -97,6 +97,9 @@ impl AutoTrader {
             crate::feed::Message::Added(added) => {
                 get_book!(self.books, added).add_order(added, &self.username);
             }
+            crate::feed::Message::Deleted(deleted) => {
+                get_book!(self.books, deleted).remove_order(deleted, &self.username);
+            }
             crate::feed::Message::Trade(trade) => {
                 get_book!(self.books, trade).trade(trade, &self.username);
             }
@@ -110,7 +113,8 @@ impl AutoTrader {
         let (_, read) = stream.split();
         let _ = read.for_each(|message| async {
             let message: crate::feed::Message =
-                serde_json::from_slice(&message.unwrap().into_data()).expect("Failed to parse feed message");
+                serde_json::from_slice(&message.unwrap().into_data())
+                    .expect("Failed to parse feed message");
             // self.parse_feed_message(message);
         });
         Ok(())
@@ -124,7 +128,7 @@ impl AutoTrader {
         volume: Volume,
         order_type: OrderType,
     ) -> Result<(), reqwest::Error> {
-        send_order!(&Order {
+        send_order!(&crate::order::Order {
             username: &self.username,
             password: &self.password,
             message: crate::order::Message::Add(AddMessage {
@@ -140,7 +144,7 @@ impl AutoTrader {
     }
 
     pub async fn cancel_order(&self, product: &str, id: &str) -> Result<(), reqwest::Error> {
-        send_order!(&Order {
+        send_order!(&crate::order::Order {
             username: &self.username,
             password: &self.password,
             message: crate::order::Message::Delete(DeleteMessage {
@@ -153,7 +157,7 @@ impl AutoTrader {
     }
 
     pub async fn cancel_all_orders_in_book(&self, product: &str) -> Result<(), reqwest::Error> {
-        send_order!(&Order {
+        send_order!(&crate::order::Order {
             username: &self.username,
             password: &self.password,
             message: crate::order::Message::BulkDelete(BulkDeleteMessage {
@@ -186,13 +190,15 @@ impl AutoTrader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::orderbook::Position;
+    use crate::orderbook::{Order, Position};
     use serde_json::{from_value, json};
     use std::collections::BTreeMap;
 
     macro_rules! parse_json {
         ($trader:ident, $json:tt) => {
-            $trader.parse_feed_message(from_value(json!($json)).expect("Failed to parse feed message"));
+            $trader.parse_feed_message(
+                from_value(json!($json)).expect("Failed to parse feed message"),
+            );
         };
     }
 
@@ -205,11 +211,6 @@ mod tests {
         assert_eq!(trader.books, HashMap::new());
 
         let product = String::from("F_SOP_APP0104T0950");
-        let order1 = String::from("02a70d7e-9178-46df-8f77-a996f2e78bd8");
-        let order2 = String::from("defb5c1b-e580-4a8e-a668-3847f5ccad16");
-        let order3 = String::from("678306ab-9771-4e53-9c61-ba3451847d74");
-        let order4 = String::from("cbaf100a-b9c5-4a77-8499-3a6b176e157f");
-        let order5 = String::from("af0261ad-cb51-44f6-842d-520afd2ec392");
 
         parse_json!(trader, {
             "type": "FUTURE",
@@ -232,14 +233,15 @@ mod tests {
         parse_json!(trader, {
             "type": "ADDED",
             "product": product,
-            "id": order1,
+            "id": "1",
             "side": "BUY",
             "price": 24.31,
             "filled": 0,
             "resting": 20,
-            "owner": "cchuah",
+            "owner": "kliang",
             "sequence": 2
         });
+
         assert_eq!(
             trader.books,
             HashMap::from([(
@@ -247,9 +249,16 @@ mod tests {
                 Book {
                     bids: BTreeMap::from([(Price(2431), Volume(20))]),
                     asks: BTreeMap::new(),
-                    orders: HashMap::from([(order1.clone(), Price(2431))]),
+                    orders: HashMap::from([(
+                        String::from("1"),
+                        Order {
+                            price: Price(2431),
+                            owner: Username::KLiang,
+                            volume: Volume(20),
+                        }
+                    )]),
                     position: Position {
-                        bid_exposure: Volume(0),
+                        bid_exposure: Volume(20),
                         ask_exposure: Volume(0),
                         position: 0,
                     },
@@ -261,7 +270,7 @@ mod tests {
         parse_json!(trader, {
             "type": "ADDED",
             "product": product,
-            "id": order2,
+            "id": "2",
             "side": "BUY",
             "price": 24.31,
             "filled": 0,
@@ -273,7 +282,7 @@ mod tests {
         parse_json!(trader, {
             "type": "ADDED",
             "product": product,
-            "id": order3,
+            "id": "3",
             "side": "SELL",
             "price": 33.29,
             "filled": 0,
@@ -285,7 +294,7 @@ mod tests {
         parse_json!(trader, {
             "type": "ADDED",
             "product": product,
-            "id": order4,
+            "id": "4",
             "side": "SELL",
             "price": 31.01,
             "filled": 0,
@@ -294,17 +303,62 @@ mod tests {
             "sequence": 5
         });
 
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                product.clone(),
+                Book {
+                    bids: BTreeMap::from([(Price(2431), Volume(35))]),
+                    asks: BTreeMap::from([(Price(3329), Volume(20)), (Price(3101), Volume(50))]),
+                    orders: HashMap::from([
+                        (
+                            String::from("1"),
+                            Order {
+                                price: Price(2431),
+                                owner: Username::KLiang,
+                                volume: Volume(20),
+                            },
+                        ),
+                        (
+                            String::from("2"),
+                            Order {
+                                price: Price(2431),
+                                owner: Username::CChuah,
+                                volume: Volume(15),
+                            },
+                        ),
+                        (
+                            String::from("3"),
+                            Order {
+                                price: Price(3329),
+                                owner: Username::CChuah,
+                                volume: Volume(20),
+                            },
+                        ),
+                        (
+                            String::from("4"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::RCurby,
+                                volume: Volume(50),
+                            },
+                        ),
+                    ]),
+                    position: Position {
+                        bid_exposure: Volume(20),
+                        ask_exposure: Volume(0),
+                        position: 0,
+                    },
+                    is_active: true,
+                },
+            )])
+        );
+
         parse_json!(trader, {
-            "type": "TRADE",
+            "type": "DELETED",
             "product": product,
-            "price": 28.35,
-            "volume": 5,
-            "buyer": "fmavlono",
-            "seller": "pshannon",
-            "tradeType": "SELL_AGGRESSOR",
-            "passiveOrder": order2,
-            "passiveOrderRemaining": 0,
-            "aggressorOrder": order5,
+            "id": "1",
+            "side": "BUY",
             "sequence": 6
         });
 
@@ -313,13 +367,33 @@ mod tests {
             HashMap::from([(
                 product.clone(),
                 Book {
-                    bids: BTreeMap::from([(Price(2431), Volume(35)),]),
-                    asks: BTreeMap::from([(Price(3329), Volume(20)), (Price(3101), Volume(50)),]),
+                    bids: BTreeMap::from([(Price(2431), Volume(15))]),
+                    asks: BTreeMap::from([(Price(3329), Volume(20)), (Price(3101), Volume(50))]),
                     orders: HashMap::from([
-                        (order1.clone(), Price(2431)),
-                        (order2.clone(), Price(2431)),
-                        (order3.clone(), Price(3329)),
-                        (order4.clone(), Price(3101)),
+                        (
+                            String::from("2"),
+                            Order {
+                                price: Price(2431),
+                                owner: Username::CChuah,
+                                volume: Volume(15),
+                            },
+                        ),
+                        (
+                            String::from("3"),
+                            Order {
+                                price: Price(3329),
+                                owner: Username::CChuah,
+                                volume: Volume(20),
+                            },
+                        ),
+                        (
+                            String::from("4"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::RCurby,
+                                volume: Volume(50),
+                            },
+                        ),
                     ]),
                     position: Position {
                         bid_exposure: Volume(0),
@@ -330,5 +404,130 @@ mod tests {
                 },
             )])
         );
+
+        parse_json!(trader, {
+            "type": "ADDED",
+            "product": product,
+            "id": "5",
+            "side": "SELL",
+            "price": 30.01,
+            "filled": 0,
+            "resting": 1,
+            "owner": "kliang",
+            "sequence": 7
+        });
+
+        parse_json!(trader, {
+            "type": "ADDED",
+            "product": product,
+            "id": "6",
+            "side": "BUY",
+            "price": 28.90,
+            "filled": 0,
+            "resting": 5,
+            "owner": "kliang",
+            "sequence": 8
+        });
+
+        parse_json!(trader, {
+            "type": "ADDED",
+            "product": product,
+            "id": "7",
+            "side": "BUY",
+            "price": 29.99,
+            "filled": 0,
+            "resting": 1,
+            "owner": "kliang",
+            "sequence": 9
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                product.clone(),
+                Book {
+                    bids: BTreeMap::from([
+                        (Price(2431), Volume(15)),
+                        (Price(2890), Volume(5)),
+                        (Price(2999), Volume(1))
+                    ]),
+                    asks: BTreeMap::from([
+                        (Price(3329), Volume(20)),
+                        (Price(3101), Volume(50)),
+                        (Price(3001), Volume(1))
+                    ]),
+                    orders: HashMap::from([
+                        (
+                            String::from("2"),
+                            Order {
+                                price: Price(2431),
+                                owner: Username::CChuah,
+                                volume: Volume(15),
+                            },
+                        ),
+                        (
+                            String::from("3"),
+                            Order {
+                                price: Price(3329),
+                                owner: Username::CChuah,
+                                volume: Volume(20),
+                            },
+                        ),
+                        (
+                            String::from("4"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::RCurby,
+                                volume: Volume(50),
+                            },
+                        ),
+                        (
+                            String::from("5"),
+                            Order {
+                                price: Price(3001),
+                                owner: Username::KLiang,
+                                volume: Volume(1),
+                            },
+                        ),
+                        (
+                            String::from("6"),
+                            Order {
+                                price: Price(2890),
+                                owner: Username::KLiang,
+                                volume: Volume(5),
+                            },
+                        ),
+                        (
+                            String::from("7"),
+                            Order {
+                                price: Price(2999),
+                                owner: Username::KLiang,
+                                volume: Volume(1),
+                            },
+                        ),
+                    ]),
+                    position: Position {
+                        bid_exposure: Volume(6),
+                        ask_exposure: Volume(1),
+                        position: 0,
+                    },
+                    is_active: true,
+                },
+            )])
+        );
+
+        parse_json!(trader, {
+            "type": "TRADE",
+            "product": product,
+            "price": 28.35,
+            "volume": 5,
+            "buyer": "fmavlono",
+            "seller": "pshannon",
+            "tradeType": "SELL_AGGRESSOR",
+            "passiveOrder": "2",
+            "passiveOrderRemaining": 0,
+            "aggressorOrder": "5",
+            "sequence": 6
+        });
     }
 }
