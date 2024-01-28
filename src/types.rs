@@ -1,6 +1,6 @@
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-use std::ops::{AddAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 macro_rules! to_underlying {
     ($strong:expr) => {
@@ -17,6 +17,20 @@ pub enum Side {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Price(pub u16);
+
+impl Sub<u16> for Price {
+    type Output = Price;
+    fn sub(self, rhs: u16) -> Self::Output {
+        Price(to_underlying!(self) - rhs)
+    }
+}
+
+impl Add<u16> for Price {
+    type Output = Price;
+    fn add(self, rhs: u16) -> Self::Output {
+        Price(to_underlying!(self) + rhs)
+    }
+}
 
 impl From<f64> for Price {
     fn from(price: f64) -> Self {

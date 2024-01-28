@@ -1,7 +1,7 @@
 use crate::{
+    book::Book,
     observations::Observation,
     order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, OrderType},
-    orderbook::Book,
     types::{Price, Side, Volume},
     username::Username,
 };
@@ -200,7 +200,7 @@ impl AutoTrader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::orderbook::{Order, Position};
+    use crate::book::{Order, Position, PriceLevel};
     use serde_json::{from_value, json};
     use std::collections::BTreeMap;
 
@@ -252,6 +252,20 @@ mod tests {
             "sequence": 2
         });
 
+        assert_eq!(
+            trader
+                .books
+                .get(&product)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2431),
+                    volume: Volume(20),
+                }),
+                None
+            )
+        );
         assert_eq!(
             trader.books,
             HashMap::from([(
@@ -313,6 +327,23 @@ mod tests {
         });
 
         assert_eq!(
+            trader
+                .books
+                .get(&product)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2431),
+                    volume: Volume(35),
+                }),
+                Some(PriceLevel {
+                    price: Price(3101),
+                    volume: Volume(50),
+                }),
+            )
+        );
+        assert_eq!(
             trader.books,
             HashMap::from([(
                 product.clone(),
@@ -370,6 +401,23 @@ mod tests {
             "sequence": 6
         });
 
+        assert_eq!(
+            trader
+                .books
+                .get(&product)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2431),
+                    volume: Volume(15),
+                }),
+                Some(PriceLevel {
+                    price: Price(3101),
+                    volume: Volume(50),
+                }),
+            )
+        );
         assert_eq!(
             trader.books,
             HashMap::from([(
@@ -448,6 +496,23 @@ mod tests {
             "sequence": 9
         });
 
+        assert_eq!(
+            trader
+                .books
+                .get(&product)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2999),
+                    volume: Volume(1),
+                }),
+                Some(PriceLevel {
+                    price: Price(3001),
+                    volume: Volume(1),
+                }),
+            )
+        );
         assert_eq!(
             trader.books,
             HashMap::from([(
@@ -536,6 +601,23 @@ mod tests {
             "sequence": 10
         });
 
+        assert_eq!(
+            trader
+                .books
+                .get(&product)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2999),
+                    volume: Volume(1),
+                }),
+                Some(PriceLevel {
+                    price: Price(3101),
+                    volume: Volume(50),
+                }),
+            )
+        );
         assert_eq!(
             trader.books,
             HashMap::from([(
@@ -628,6 +710,23 @@ mod tests {
             "sequence": 12
         });
 
+        assert_eq!(
+            trader
+                .books
+                .get(&product)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2890),
+                    volume: Volume(3),
+                }),
+                Some(PriceLevel {
+                    price: Price(3101),
+                    volume: Volume(50),
+                }),
+            )
+        );
         assert_eq!(
             trader.books,
             HashMap::from([(

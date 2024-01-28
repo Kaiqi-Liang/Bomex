@@ -1,8 +1,8 @@
 mod autotrader;
+mod book;
 mod feed;
 mod observations;
 mod order;
-mod orderbook;
 mod types;
 mod username;
 
@@ -35,12 +35,26 @@ async fn main() {
             exceptions += 1;
         }
 
-        for product in trader.books.keys() {
+        for (product, book) in trader.books.iter() {
+            let credit = 10;
+            let (best_bid, best_ask) = book.bbo();
             let result = trader
                 .place_order(
                     product,
-                    types::Price(2000),
+                    best_bid.map_or(types::Price(1000), |price| price.price + credit),
                     types::Side::Buy,
+                    types::Volume(20),
+                    order::OrderType::Day,
+                )
+                .await;
+            if result.is_err() {
+                exceptions += 1;
+            }
+            let result = trader
+                .place_order(
+                    product,
+                    best_ask.map_or(types::Price(5000), |price| price.price - credit),
+                    types::Side::Sell,
                     types::Volume(20),
                     order::OrderType::Day,
                 )

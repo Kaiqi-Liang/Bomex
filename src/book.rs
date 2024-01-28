@@ -47,8 +47,20 @@ macro_rules! get_side_and_exposure {
     };
 }
 
+#[derive(Debug, PartialEq)]
+pub struct PriceLevel {
+    pub price: Price,
+    pub volume: Volume,
+}
+
+impl From<(&Price, &Volume)> for PriceLevel {
+    fn from((&price, &volume): (&Price, &Volume)) -> Self {
+        PriceLevel { price, volume }
+    }
+}
+
 impl Book {
-    pub fn new() -> Book {
+    pub fn new() -> Self {
         Book {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
@@ -59,6 +71,13 @@ impl Book {
                 position: 0,
             },
         }
+    }
+
+    pub fn bbo(&self) -> (Option<PriceLevel>, Option<PriceLevel>) {
+        (
+            self.bids.last_key_value().map(|best_bid| best_bid.into()),
+            self.asks.first_key_value().map(|best_ask| best_ask.into()),
+        )
     }
 
     pub fn add_order(&mut self, added: AddedMessage, username: &Username) {
@@ -83,11 +102,11 @@ impl Book {
             *exposure -= order.volume;
         }
 
-        let level = side
+        let volume = side
             .get_mut(&order.price)
             .expect("Order does not exist in the orderbook");
-        *level -= order.volume;
-        if *level == 0 {
+        *volume -= order.volume;
+        if *volume == 0 {
             side.remove(&order.price);
         }
     }
@@ -131,11 +150,11 @@ impl Book {
                     *exposure -= trade.volume;
                 }
 
-                let level = side
+                let volume = side
                     .get_mut(&order.price)
                     .expect("Trading with an order with price not in the orderbook");
-                assert!(*level - trade.volume == trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook");
-                *level = trade.passive_order_remaining;
+                assert!(*volume - trade.volume == trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook");
+                *volume = trade.passive_order_remaining;
             }
         }
     }
