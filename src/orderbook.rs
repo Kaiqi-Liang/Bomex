@@ -5,6 +5,7 @@ use crate::{
 };
 use std::collections::{BTreeMap, HashMap};
 
+#[derive(Debug, PartialEq)]
 pub struct Book {
     bids: BTreeMap<Price, Volume>,
     asks: BTreeMap<Price, Volume>,
@@ -14,6 +15,7 @@ pub struct Book {
     product_id: String,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Position {
     pub bid_exposure: Volume, // open bid exposure in the market
     pub ask_exposure: Volume, // open ask exposure in the market

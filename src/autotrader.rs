@@ -45,17 +45,17 @@ macro_rules! get_book {
     };
 }
 
+pub struct AutoTrader {
+    username: Username,
+    password: String,
+    books: HashMap<String, Book>,
+}
+
 trait ConstantPorts {
     const OBSERVATION_PORT: u16;
     const EXECUTION_PORT: u16;
     const FEED_RECOVERY_PORT: u16;
     const HOSTNAME: &'static str;
-}
-
-pub struct AutoTrader {
-    username: Username,
-    password: String,
-    books: HashMap<String, Book>,
 }
 
 impl ConstantPorts for AutoTrader {
@@ -93,7 +93,7 @@ impl AutoTrader {
             match message {
                 crate::feed::Message::Future(future) => {
                     self.books
-                        .insert(future.product.to_owned(), Book::new(future.product));
+                        .insert(future.product.clone(), Book::new(future.product));
                 }
                 crate::feed::Message::Added(added) => {
                     get_book!(self.books, added).add_order(added, &self.username);
@@ -171,7 +171,7 @@ impl AutoTrader {
                 .await?
                 .json()
                 .await?;
-        println!("{response:#?}");
+        println!("{}", response[0].air_temperature);
         Ok(())
     }
 
@@ -181,5 +181,46 @@ impl AutoTrader {
             self.cancel_all_orders_in_book(id).await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{from_value, json};
+
+    #[test]
+    fn test_parse_feed_messages() {
+        let mut trader = AutoTrader::new(
+            Username::KLiang,
+            String::from("de7d8b078d63d5d9ad4e9df2f542eca6"),
+        );
+        assert_eq!(trader.books, HashMap::new());
+        let product = String::from("F_SOP_APP0104T0950");
+        let message = json!([
+            {
+              "type": "FUTURE",
+              "product": product,
+              "stationId": 66212,
+              "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
+              "expiry": "2024-01-04 09:50+1100",
+              "haltTime": "2024-01-04 09:50+1100",
+              "unit": "APPARENT_TEMP",
+              "strike": 0,
+              "aggressiveFee": 0,
+              "passiveFee": 0,
+              "announcementFee": 0,
+              "incentiveRebatePerUnit": 0,
+              "maxIncentiveRebate": 0,
+              "brokerFee": 0,
+              "timestamp": 1704321903118u64,
+              "sequence": 1,
+            }
+        ]);
+        trader.parse_feed_messages(from_value(message).expect("Invalid JSON"));
+        assert_eq!(
+            trader.books,
+            HashMap::from([(product.clone(), Book::new(product),)])
+        );
     }
 }
