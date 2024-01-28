@@ -3,7 +3,6 @@ use crate::{
     types::{Price, Side, Volume},
     username::Username,
 };
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 
 pub struct Book {
@@ -46,70 +45,22 @@ impl Book {
         if added.owner == *username {
             *exposure += added.resting_volume;
         }
-        let level = side
-            .entry(added.price)
+        side.entry(added.price)
             .and_modify(|volume| *volume += added.resting_volume)
             .or_insert(added.resting_volume);
         self.orders.insert(added.order_id, added.price);
     }
 
     pub fn trade(&mut self, trade: TradeMessage, username: &Username) {
-        if trade.buyer != *username && trade.seller != *username {
-            return;
-        } else if trade.buyer == trade.seller {
-            self.position.ask_exposure -= trade.volume;
-            self.position.bid_exposure -= trade.volume;
-        } else if trade.buyer == *username {
-            self.position.position += trade.volume;
-        } else if trade.seller == *username {
-            self.position.position -= trade.volume;
+        if trade.buyer == *username || trade.seller == *username {
+            if trade.buyer == trade.seller {
+                self.position.ask_exposure -= trade.volume;
+                self.position.bid_exposure -= trade.volume;
+            } else if trade.buyer == *username {
+                self.position.position += trade.volume;
+            } else if trade.seller == *username {
+                self.position.position -= trade.volume;
+            }
         }
     }
 }
-
-impl From<AddedMessage> for Order {
-    fn from(added: AddedMessage) -> Self {
-        Order {
-            order_id: added.order_id,
-            owner: added.owner,
-            price: added.price,
-            side: added.side,
-            filled_volume: added.filled_volume,
-            resting_volume: added.resting_volume,
-        }
-    }
-}
-
-struct Order {
-    order_id: String,
-    owner: Username,
-    price: Price,
-    side: Side,
-    filled_volume: Volume,
-    resting_volume: Volume,
-}
-
-impl Ord for Order {
-    fn cmp(&self, other: &Self) -> Ordering {
-        assert_eq!(self.side, other.side);
-        match self.side {
-            Side::Buy => self.price.partial_cmp(&other.price),
-            Side::Sell => other.price.partial_cmp(&self.price),
-        }
-        .unwrap()
-    }
-}
-
-impl PartialOrd for Order {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Order {
-    fn eq(&self, other: &Self) -> bool {
-        self.price == other.price
-    }
-}
-
-impl Eq for Order {}
