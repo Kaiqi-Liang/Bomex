@@ -108,10 +108,10 @@ impl SubAssign<Volume> for i16 {
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum Station {
-    SydAirport = 66037,
-    SydOlympicPark = 66212,
-    CanberraAirport = 70351,
-    CapeByron = 58216,
+    SydAirport,
+    SydOlympicPark,
+    CanberraAirport,
+    CapeByron,
 }
 
 impl From<u64> for Station {

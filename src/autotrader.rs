@@ -112,6 +112,9 @@ impl AutoTrader {
             crate::feed::Message::Index(index) => {
                 println!("{index:#?}");
             }
+            crate::feed::Message::TradingHalt(_) => {
+                println!("Trading halted");
+            }
         }
     }
 

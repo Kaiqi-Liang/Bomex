@@ -13,6 +13,7 @@ pub enum Message {
     Trade(TradeMessage),
     Settlement(SettlementMessage),
     Index(IndexMessage),
+    TradingHalt(TradingHaltMessage),
 }
 
 #[derive(Deserialize)]
@@ -94,3 +95,6 @@ where
     let ids: Vec<u64> = Deserialize::deserialize(deserializer)?;
     Ok(ids.into_iter().map(Station::from).collect())
 }
+
+#[derive(Deserialize)]
+pub struct TradingHaltMessage {}
