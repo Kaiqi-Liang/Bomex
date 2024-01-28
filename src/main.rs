@@ -23,8 +23,36 @@ async fn main() {
     //     trader.shutdown();
     // });
 
+    let mut exceptions = 0;
     loop {
-        let _ = trader.refresh_latest_observations().await;
-        let _ = trader.poll().await;
+        let result = trader.refresh_latest_observations().await;
+        if result.is_err() {
+            exceptions += 1;
+        }
+
+        let result = trader.poll().await;
+        if result.is_err() {
+            exceptions += 1;
+        }
+
+        for product in trader.books.keys() {
+            let result = trader
+                .place_order(
+                    product,
+                    types::Price(2000),
+                    types::Side::Buy,
+                    types::Volume(20),
+                    order::OrderType::Day,
+                )
+                .await;
+            if result.is_err() {
+                exceptions += 1;
+            }
+        }
+
+        if exceptions > 100 {
+            break;
+        }
     }
+    let _ = trader.shutdown().await;
 }

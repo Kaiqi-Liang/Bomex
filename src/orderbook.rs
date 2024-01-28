@@ -11,7 +11,6 @@ pub struct Book {
     pub asks: BTreeMap<Price, Volume>,
     pub orders: HashMap<String, Order>,
     pub position: Position,
-    pub is_active: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -59,7 +58,6 @@ impl Book {
                 ask_exposure: Volume(0),
                 position: 0,
             },
-            is_active: true,
         }
     }
 

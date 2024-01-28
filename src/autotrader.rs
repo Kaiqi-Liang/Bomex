@@ -47,7 +47,7 @@ macro_rules! get_book {
 pub struct AutoTrader {
     username: Username,
     password: String,
-    books: HashMap<String, Book>,
+    pub books: HashMap<String, Book>,
 }
 
 trait ConstantPorts {
@@ -89,6 +89,7 @@ impl AutoTrader {
         Ok(())
     }
 
+    /// Outbound decoder for feed
     fn parse_feed_message(&mut self, message: crate::feed::Message) {
         match message {
             crate::feed::Message::Future(future) => {
@@ -103,7 +104,12 @@ impl AutoTrader {
             crate::feed::Message::Trade(trade) => {
                 get_book!(self.books, trade).trade(trade, &self.username);
             }
-            crate::feed::Message::Index(index) => todo!(),
+            crate::feed::Message::Settlement(settlement) => {
+                self.books.remove(&settlement.product);
+            }
+            crate::feed::Message::Index(index) => {
+                println!("{index:#?}");
+            }
         }
     }
 
@@ -111,12 +117,14 @@ impl AutoTrader {
         let (stream, _) =
             connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information")).await?;
         let (_, read) = stream.split();
-        let _ = read.for_each(|message| async {
+        read.for_each(|message| async {
+            #[allow(unused)]
             let message: crate::feed::Message =
                 serde_json::from_slice(&message.unwrap().into_data())
                     .expect("Failed to parse feed message");
             // self.parse_feed_message(message);
-        });
+        })
+        .await;
         Ok(())
     }
 
@@ -137,12 +145,13 @@ impl AutoTrader {
                 price,
                 side,
                 volume,
-                order_type
+                order_type,
             }),
         });
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn cancel_order(&self, product: &str, id: &str) -> Result<(), reqwest::Error> {
         send_order!(&crate::order::Order {
             username: &self.username,
@@ -150,7 +159,7 @@ impl AutoTrader {
             message: crate::order::Message::Delete(DeleteMessage {
                 message_type: MessageType::Delete,
                 product,
-                id
+                id,
             })
         });
         Ok(())
@@ -162,7 +171,7 @@ impl AutoTrader {
             password: &self.password,
             message: crate::order::Message::BulkDelete(BulkDeleteMessage {
                 message_type: MessageType::BulkDelete,
-                product
+                product,
             })
         });
         Ok(())
@@ -174,6 +183,7 @@ impl AutoTrader {
                 .await?
                 .json()
                 .await?;
+        // TODO: save observations
         println!("{}", response[0].air_temperature);
         Ok(())
     }
@@ -262,7 +272,6 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
-                    is_active: true,
                 },
             )])
         );
@@ -349,7 +358,6 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
-                    is_active: true,
                 },
             )])
         );
@@ -400,7 +408,6 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
-                    is_active: true,
                 },
             )])
         );
@@ -511,7 +518,6 @@ mod tests {
                         ask_exposure: Volume(1),
                         position: 0,
                     },
-                    is_active: true,
                 },
             )])
         );
@@ -588,7 +594,6 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: -1,
                     },
-                    is_active: true,
                 },
             )])
         );
@@ -669,9 +674,19 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: -1,
                     },
-                    is_active: true,
                 },
             )])
         );
+
+        parse_json!(trader, {
+            "type": "SETTLEMENT",
+            "product": product,
+            "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
+            "expiry": "2024-01-04 09:50+1100",
+            "price": 26.05,
+            "sequence": 13
+        });
+
+        assert_eq!(trader.books, HashMap::new());
     }
 }

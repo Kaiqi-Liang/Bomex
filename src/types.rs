@@ -19,10 +19,10 @@ pub enum Side {
 pub struct Price(pub u16);
 
 impl From<f64> for Price {
-    fn from(value: f64) -> Self {
-        let value = value * 100.0;
-        assert!((value) % 1.0 == 0.0, "Value must have 2 decimal places");
-        Price((value) as u16)
+    fn from(price: f64) -> Self {
+        let price = price * 100.0;
+        assert!((price) % 1.0 == 0.0, "price must have 2 decimal places");
+        Price((price) as u16)
     }
 }
 
@@ -92,6 +92,7 @@ impl SubAssign<Volume> for i16 {
     }
 }
 
+#[derive(Debug)]
 pub enum Station {
     SydAirport = 66037,
     SydOlympicPark = 66212,
@@ -104,7 +105,7 @@ impl<'de> Deserialize<'de> for Station {
     where
         D: Deserializer<'de>,
     {
-        let station: Value = Deserialize::deserialize(deserializer)?;
+        let station = Deserialize::deserialize(deserializer)?;
         match station {
             Value::Number(station) => Ok(station
                 .as_u64()

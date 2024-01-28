@@ -55,5 +55,6 @@ pub enum MessageType {
 #[derive(Serialize)]
 pub enum OrderType {
     Day,
+    #[allow(dead_code)]
     Ioc,
 }

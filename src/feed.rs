@@ -11,6 +11,7 @@ pub enum Message {
     Added(AddedMessage),
     Deleted(DeletedMessage),
     Trade(TradeMessage),
+    Settlement(SettlementMessage),
     Index(IndexMessage),
 }
 
@@ -66,6 +67,19 @@ pub enum TradeType {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SettlementMessage {
+    pub product: String,
+    #[allow(dead_code)]
+    station_name: String,
+    #[allow(dead_code)]
+    expiry: String,
+    #[allow(dead_code)]
+    price: Price,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct IndexMessage {
     index_id: u32,
     index_name: String,
@@ -78,6 +92,5 @@ where
     D: Deserializer<'de>,
 {
     let ids: Vec<u64> = Deserialize::deserialize(deserializer)?;
-    let result: Vec<Station> = ids.into_iter().map(Station::from).collect();
-    Ok(result)
+    Ok(ids.into_iter().map(Station::from).collect())
 }
