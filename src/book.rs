@@ -1,6 +1,6 @@
 use crate::{
     feed::{AddedMessage, DeletedMessage, TradeMessage, TradeType},
-    types::{Price, Side, Volume},
+    types::{Price, Side, Station, Volume},
     username::Username,
 };
 use std::collections::{BTreeMap, HashMap};
@@ -11,6 +11,7 @@ pub struct Book {
     pub asks: BTreeMap<Price, Volume>,
     pub orders: HashMap<String, Order>,
     pub position: Position,
+    pub station_id: Station,
 }
 
 #[derive(Debug, PartialEq)]
@@ -60,7 +61,7 @@ impl From<(&Price, &Volume)> for PriceLevel {
 }
 
 impl Book {
-    pub fn new() -> Self {
+    pub fn new(station_id: Station) -> Self {
         Book {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
@@ -70,6 +71,7 @@ impl Book {
                 ask_exposure: Volume(0),
                 position: 0,
             },
+            station_id,
         }
     }
 

@@ -1,7 +1,6 @@
 mod autotrader;
 mod book;
 mod feed;
-mod observations;
 mod order;
 mod types;
 mod username;
@@ -25,6 +24,7 @@ async fn main() {
 
     let mut exceptions = 0;
     loop {
+        // TODO: don't wait for observations
         let result = trader.refresh_latest_observations().await;
         if result.is_err() {
             exceptions += 1;
@@ -36,6 +36,7 @@ async fn main() {
         }
 
         for (product, book) in trader.books.iter() {
+            println!("{:#?}", trader.observations.get(&book.station_id));
             let credit = 10;
             let (best_bid, best_ask) = book.bbo();
             let result = trader

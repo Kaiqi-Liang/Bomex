@@ -1,8 +1,7 @@
 use crate::{
     book::Book,
-    observations::Observation,
     order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, OrderType},
-    types::{Price, Side, Volume},
+    types::{Observation, Price, Side, Station, Volume},
     username::Username,
 };
 use futures_util::StreamExt;
@@ -48,6 +47,7 @@ pub struct AutoTrader {
     username: Username,
     password: String,
     pub books: HashMap<String, Book>,
+    pub observations: HashMap<Station, Vec<Observation>>,
 }
 
 trait ConstantPorts {
@@ -70,6 +70,7 @@ impl AutoTrader {
             username,
             password,
             books: HashMap::new(),
+            observations: HashMap::new(),
         }
     }
 
@@ -93,7 +94,8 @@ impl AutoTrader {
     fn parse_feed_message(&mut self, message: crate::feed::Message) {
         match message {
             crate::feed::Message::Future(future) => {
-                self.books.insert(future.product, Book::new());
+                self.books
+                    .insert(future.product, Book::new(future.station_id));
             }
             crate::feed::Message::Added(added) => {
                 get_book!(self.books, added).add_order(added, &self.username);
@@ -174,14 +176,17 @@ impl AutoTrader {
         Ok(())
     }
 
-    pub async fn refresh_latest_observations(&self) -> Result<(), reqwest::Error> {
+    pub async fn refresh_latest_observations(&mut self) -> Result<(), reqwest::Error> {
         let response: Vec<Observation> =
             reqwest::get(url!(AutoTrader::OBSERVATION_PORT, "current"))
                 .await?
                 .json()
                 .await?;
-        // TODO: save observations
-        println!("{}", response[0].air_temperature);
+        for observation in response {
+            self.observations
+                .entry(observation.station.clone())
+                .and_modify(|observations| observations.push(observation));
+        }
         Ok(())
     }
 
@@ -197,7 +202,10 @@ impl AutoTrader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::book::{Order, Position, PriceLevel};
+    use crate::{
+        book::{Order, Position, PriceLevel},
+        types::Station,
+    };
     use serde_json::{from_value, json};
     use std::collections::BTreeMap;
 
@@ -211,10 +219,7 @@ mod tests {
 
     #[test]
     fn test_parse_feed_message() {
-        let mut trader = AutoTrader::new(
-            Username::KLiang,
-            String::from("de7d8b078d63d5d9ad4e9df2f542eca6"),
-        );
+        let mut trader = AutoTrader::new(Username::KLiang, String::new());
         assert_eq!(trader.books, HashMap::new());
 
         let product = String::from("F_SOP_APP0104T0950");
@@ -283,6 +288,7 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
+                    station_id: Station::SydOlympicPark,
                 },
             )])
         );
@@ -386,6 +392,7 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
+                    station_id: Station::SydOlympicPark,
                 },
             )])
         );
@@ -453,6 +460,7 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
+                    station_id: Station::SydOlympicPark,
                 },
             )])
         );
@@ -580,6 +588,7 @@ mod tests {
                         ask_exposure: Volume(1),
                         position: 0,
                     },
+                    station_id: Station::SydOlympicPark,
                 },
             )])
         );
@@ -673,6 +682,7 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: -1,
                     },
+                    station_id: Station::SydOlympicPark,
                 },
             )])
         );
@@ -770,6 +780,7 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: -1,
                     },
+                    station_id: Station::SydOlympicPark,
                 },
             )])
         );

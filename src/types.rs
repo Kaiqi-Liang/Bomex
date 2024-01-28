@@ -106,12 +106,24 @@ impl SubAssign<Volume> for i16 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum Station {
     SydAirport = 66037,
     SydOlympicPark = 66212,
     CanberraAirport = 70351,
     CapeByron = 58216,
+}
+
+impl From<u64> for Station {
+    fn from(id: u64) -> Self {
+        match id {
+            66037 => Station::SydAirport,
+            66212 => Station::SydOlympicPark,
+            70351 => Station::CanberraAirport,
+            58216 => Station::CapeByron,
+            _ => panic!("Unknown Station ID"),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for Station {
@@ -131,14 +143,16 @@ impl<'de> Deserialize<'de> for Station {
     }
 }
 
-impl From<u64> for Station {
-    fn from(id: u64) -> Self {
-        match id {
-            66037 => Station::SydAirport,
-            66212 => Station::SydOlympicPark,
-            70351 => Station::CanberraAirport,
-            58216 => Station::CapeByron,
-            _ => panic!("Unknown Station ID"),
-        }
-    }
+#[derive(Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Observation {
+    pub station: Station,
+    pub time: String,
+    pub air_temperature: f64,
+    pub apparent_temperature: f64,
+    pub barometric_pressure: f64,
+    pub relative_humidity: u32,
+    pub mystery: f64,
+    pub wind_speed: u32,
+    pub wind_direction: u32,
 }
