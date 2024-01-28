@@ -1,8 +1,8 @@
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-use std::ops::{AddAssign, SubAssign};
+use std::ops::{AddAssign, Sub, SubAssign};
 
-macro_rules! toUnderlying {
+macro_rules! to_underlying {
     ($strong:expr) => {
         $strong.0
     };
@@ -31,7 +31,7 @@ impl Serialize for Price {
     where
         S: Serializer,
     {
-        let price = toUnderlying!(self) as f64 / 100.0;
+        let price = to_underlying!(self) as f64 / 100.0;
         price.serialize(serializer)
     }
 }
@@ -46,30 +46,49 @@ impl<'de> Deserialize<'de> for Price {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Volume(pub u16);
+
+impl PartialEq for Volume {
+    fn eq(&self, other: &Volume) -> bool {
+        to_underlying!(self) == to_underlying!(other)
+    }
+}
+
+impl PartialEq<u16> for Volume {
+    fn eq(&self, other: &u16) -> bool {
+        to_underlying!(self) == *other
+    }
+}
+
+impl Sub for Volume {
+    type Output = Volume;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Volume(to_underlying!(self) - to_underlying!(rhs))
+    }
+}
 
 impl AddAssign for Volume {
     fn add_assign(&mut self, rhs: Self) {
-        toUnderlying!(self) += toUnderlying!(rhs);
+        to_underlying!(self) += to_underlying!(rhs);
     }
 }
 
 impl SubAssign for Volume {
     fn sub_assign(&mut self, rhs: Self) {
-        toUnderlying!(self) -= toUnderlying!(rhs);
+        to_underlying!(self) -= to_underlying!(rhs);
     }
 }
 
 impl AddAssign<Volume> for i16 {
     fn add_assign(&mut self, rhs: Volume) {
-        *self += toUnderlying!(rhs) as i16;
+        *self += to_underlying!(rhs) as i16;
     }
 }
 
 impl SubAssign<Volume> for i16 {
     fn sub_assign(&mut self, rhs: Volume) {
-        *self -= toUnderlying!(rhs) as i16;
+        *self -= to_underlying!(rhs) as i16;
     }
 }
 

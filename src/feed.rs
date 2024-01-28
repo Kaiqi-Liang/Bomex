@@ -56,9 +56,9 @@ pub struct TradeMessage {
     pub aggressor_order: String,
 }
 
-#[derive(Deserialize)]
+#[derive(PartialEq, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum TradeType {
+pub enum TradeType {
     SellAggressor,
     BuyAggressor,
     BrokerTrade,

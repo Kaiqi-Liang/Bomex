@@ -1,5 +1,5 @@
 use crate::{
-    feed::{AddedMessage, DeletedMessage, TradeMessage},
+    feed::{AddedMessage, DeletedMessage, TradeMessage, TradeType},
     types::{Price, Side, Volume},
     username::Username,
 };
@@ -78,25 +78,66 @@ impl Book {
         let order = self
             .orders
             .remove(&deleted.id)
-            .expect("Trying to delete an order with unknown ID");
+            .expect("Deleting an order with unknown ID");
         let (side, exposure) = get_side_and_exposure!(self, deleted.side);
-        *side
-            .get_mut(&order.price)
-            .expect("Order does not exist in the orderbook") -= order.volume;
+
         if order.owner == *username {
             *exposure -= order.volume;
+        }
+
+        let level = side
+            .get_mut(&order.price)
+            .expect("Order does not exist in the orderbook");
+        *level -= order.volume;
+        if *level == 0 {
+            side.remove(&order.price);
         }
     }
 
     pub fn trade(&mut self, trade: TradeMessage, username: &Username) {
         if trade.buyer == *username || trade.seller == *username {
-            if trade.buyer == trade.seller {
-                self.position.ask_exposure -= trade.volume;
-                self.position.bid_exposure -= trade.volume;
-            } else if trade.buyer == *username {
+            if trade.buyer == *username {
                 self.position.position += trade.volume;
-            } else if trade.seller == *username {
+            }
+            if trade.seller == *username {
                 self.position.position -= trade.volume;
+            }
+        }
+        let order = self
+            .orders
+            .get_mut(&trade.passive_order)
+            .expect("Trading with an order with unknown ID");
+        assert!(order.volume - trade.volume == trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook");
+        assert!(order.price == trade.price, "Passive order in the trade message has different price than the order in the orderbook");
+
+        if trade.trade_type != TradeType::BrokerTrade {
+            let side = if trade.trade_type == TradeType::BuyAggressor {
+                Side::Sell
+            } else {
+                Side::Buy
+            };
+            if trade.passive_order_remaining == 0 {
+                self.remove_order(
+                    DeletedMessage {
+                        product: trade.product,
+                        id: trade.passive_order,
+                        side,
+                    },
+                    username,
+                );
+            } else {
+                let (side, exposure) = get_side_and_exposure!(self, side);
+                order.volume = trade.passive_order_remaining;
+
+                if order.owner == *username {
+                    *exposure -= trade.volume;
+                }
+
+                let level = side
+                    .get_mut(&order.price)
+                    .expect("Trading with an order with price not in the orderbook");
+                assert!(*level - trade.volume == trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook");
+                *level = trade.passive_order_remaining;
             }
         }
     }
