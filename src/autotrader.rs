@@ -113,13 +113,13 @@ impl AutoTrader {
                 get_book!(self.books, trade).trade(trade, &self.username);
             }
             crate::feed::Message::Settlement(settlement) => {
-                self.books.remove(&settlement.product);
+                println!("Book {} settles at {:?}", settlement.product, settlement.price);
             }
             crate::feed::Message::Index(index) => {
                 println!("{index:#?}");
             }
-            crate::feed::Message::TradingHalt(_) => {
-                println!("Trading halted");
+            crate::feed::Message::TradingHalt(halt) => {
+                self.books.remove(&halt.product);
             }
         }
     }
