@@ -27,23 +27,30 @@ async fn main() {
     println!("Server responded with headers: {:?}", response.headers());
     let (_, read) = stream.split();
 
-    let mut trader = AutoTrader::new(
+    let trader = Arc::new(Mutex::new(AutoTrader::new(
         Username::KLiang,
         String::from("de7d8b078d63d5d9ad4e9df2f542eca6"),
         Some(read),
-    );
+    )));
 
     trader
+        .lock()
+        .unwrap()
         .startup()
         .await
         .expect("Failed to connect to the feed and recover from the latest snapshot");
 
-    println!("Started up with books: {:#?}", trader.books.keys());
+    println!(
+        "Started up with books: {:#?}",
+        trader.lock().unwrap().books.keys(),
+    );
 
-    // tokio::spawn(async move {
-    //     tokio::signal::ctrl_c().await;
-    //     trader.shutdown();
-    // });
+    let shutdown = trader.clone();
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        shutdown.lock().unwrap().shutdown();
+    });
+
     let observations = Arc::new(Mutex::new(HashMap::new()));
     loop {
         let observations_update = observations.clone();
@@ -51,12 +58,15 @@ async fn main() {
             let _ = refresh_latest_observations(observations_update).await;
         });
 
-        for (product, book) in trader.books.iter() {
+        let _ = trader.lock().unwrap().poll().await;
+        for (product, book) in trader.lock().unwrap().books.iter() {
             let credit = 10;
             let (best_bid, best_ask) = book.bbo();
             println!("{:?}", best_bid);
             println!("{:?}", best_ask);
             let _ = trader
+                .lock()
+                .unwrap()
                 .place_order(
                     product,
                     best_bid.map_or(Price(1000), |price| price.price + credit),
@@ -66,6 +76,8 @@ async fn main() {
                 )
                 .await;
             let _ = trader
+                .lock()
+                .unwrap()
                 .place_order(
                     product,
                     best_ask.map_or(Price(5000), |price| price.price - credit),
