@@ -1,12 +1,14 @@
 use crate::{
     book::Book,
+    feed::HasSequence,
     order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, OrderType},
     types::{Observation, Price, Side, Station, Volume},
     username::Username,
 };
-use futures_util::StreamExt;
+use futures_util::stream::{SplitStream, StreamExt};
 use std::collections::HashMap;
-use tokio_tungstenite::connect_async;
+use tokio::net::TcpStream;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 macro_rules! url {
     ($port:expr, $endpoint:expr) => {
@@ -43,11 +45,15 @@ macro_rules! get_book {
     };
 }
 
+type Websocket = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
+
 pub struct AutoTrader {
-    username: Username,
-    password: String,
+    pub username: Username,
+    pub password: String,
     pub books: HashMap<String, Book>,
     pub observations: HashMap<Station, Vec<Observation>>,
+    pub sequence: u32,
+    pub stream: Option<Websocket>,
 }
 
 trait ConstantPorts {
@@ -65,26 +71,25 @@ impl ConstantPorts for AutoTrader {
 }
 
 impl AutoTrader {
-    pub fn new(username: Username, password: String) -> AutoTrader {
+    pub fn new(username: Username, password: String, stream: Option<Websocket>) -> AutoTrader {
         AutoTrader {
             username,
             password,
             books: HashMap::new(),
             observations: HashMap::new(),
+            sequence: 0,
+            stream,
         }
     }
 
     pub async fn startup(&mut self) -> Result<(), reqwest::Error> {
-        self.recover().await
-    }
-
-    async fn recover(&mut self) -> Result<(), reqwest::Error> {
         let messages: Vec<crate::feed::Message> =
             reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
                 .await?
                 .json()
                 .await?;
         for message in messages {
+            self.sequence = message.sequence();
             self.parse_feed_message(message);
         }
         Ok(())
@@ -92,6 +97,7 @@ impl AutoTrader {
 
     /// Outbound decoder for feed
     fn parse_feed_message(&mut self, message: crate::feed::Message) {
+        // println!("{:#?}", message);
         match message {
             crate::feed::Message::Future(future) => {
                 self.books
@@ -119,13 +125,19 @@ impl AutoTrader {
     }
 
     pub async fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let (stream, response) =
-            connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information")).await?;
-        println!("Server responded with headers: {:?}", response.headers());
-
-        let (_, mut read) = stream.split();
-        while let Some(message) = read.next().await {
-            self.parse_feed_message(serde_json::from_slice(&message?.into_data())?);
+        while let Some(message) = self.stream.as_mut().unwrap().next().await {
+            let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
+            let next_sequence = self.sequence + 1;
+            if message.sequence() == next_sequence {
+                self.sequence = next_sequence;
+                self.parse_feed_message(message);
+            } else if message.sequence() > next_sequence {
+                panic!(
+                    "Expecting sequence number {} but got {}",
+                    next_sequence,
+                    message.sequence()
+                );
+            }
         }
         Ok(())
     }
@@ -222,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_parse_feed_message() {
-        let mut trader = AutoTrader::new(Username::KLiang, String::new());
+        let mut trader = AutoTrader::new(Username::KLiang, String::new(), None);
         assert_eq!(trader.books, HashMap::new());
 
         let product = String::from("F_SOP_APP0104T0950");

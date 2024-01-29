@@ -4,8 +4,12 @@ use crate::{
 };
 use serde::{Deserialize, Deserializer};
 
-#[derive(Deserialize)]
-#[serde(rename_all = "UPPERCASE", tag = "type")]
+pub trait HasSequence {
+    fn sequence(&self) -> u32;
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE", tag = "type")]
 pub enum Message {
     Future(FutureMessage),
     Added(AddedMessage),
@@ -16,7 +20,21 @@ pub enum Message {
     TradingHalt(TradingHaltMessage),
 }
 
-#[derive(Deserialize)]
+impl HasSequence for Message {
+    fn sequence(&self) -> u32 {
+        match self {
+            Message::Future(message) => message.sequence,
+            Message::Added(message) => message.sequence,
+            Message::Deleted(message) => message.sequence,
+            Message::Trade(message) => message.sequence,
+            Message::Settlement(message) => message.sequence,
+            Message::Index(message) => message.sequence,
+            Message::TradingHalt(message) => message.sequence,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FutureMessage {
     pub product: String,
@@ -24,9 +42,10 @@ pub struct FutureMessage {
     pub station_name: String,
     pub expiry: String,
     pub halt_time: String,
+    pub sequence: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct AddedMessage {
     pub product: String,
     pub id: String,
@@ -35,16 +54,18 @@ pub struct AddedMessage {
     pub filled: Volume,
     pub resting: Volume,
     pub owner: Username,
+    pub sequence: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct DeletedMessage {
     pub product: String,
     pub id: String,
     pub side: Side,
+    pub sequence: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeMessage {
     pub product: String,
@@ -56,9 +77,10 @@ pub struct TradeMessage {
     pub passive_order: String,
     pub passive_order_remaining: Volume,
     pub aggressor_order: String,
+    pub sequence: u32,
 }
 
-#[derive(PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TradeType {
     SellAggressor,
@@ -66,7 +88,7 @@ pub enum TradeType {
     BrokerTrade,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettlementMessage {
     pub product: String,
@@ -74,8 +96,8 @@ pub struct SettlementMessage {
     station_name: String,
     #[allow(dead_code)]
     expiry: String,
-    #[allow(dead_code)]
     price: Price,
+    pub sequence: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,6 +108,7 @@ pub struct IndexMessage {
     index_name: String,
     #[serde(deserialize_with = "deserialize_station_ids")]
     station_ids: Vec<Station>,
+    pub sequence: u32,
 }
 
 fn deserialize_station_ids<'de, D>(deserializer: D) -> Result<Vec<Station>, D::Error>
@@ -96,5 +119,7 @@ where
     Ok(ids.into_iter().map(Station::from).collect())
 }
 
-#[derive(Deserialize)]
-pub struct TradingHaltMessage {}
+#[derive(Debug, Deserialize)]
+pub struct TradingHaltMessage {
+    pub sequence: u32,
+}

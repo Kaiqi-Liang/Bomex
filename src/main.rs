@@ -4,12 +4,27 @@ mod feed;
 mod order;
 mod types;
 mod username;
+use crate::{
+    order::OrderType,
+    types::{Price, Side, Volume},
+};
+use autotrader::AutoTrader;
+use futures_util::StreamExt;
+use tokio_tungstenite::connect_async;
+use username::Username;
 
 #[tokio::main]
 async fn main() {
-    let mut trader = autotrader::AutoTrader::new(
-        username::Username::KLiang,
+    let (stream, response) = connect_async("ws://sytev070:9000/information")
+        .await
+        .expect("Failed to connect to the websocket");
+    println!("Server responded with headers: {:?}", response.headers());
+    let (_, read) = stream.split();
+
+    let mut trader = AutoTrader::new(
+        Username::KLiang,
         String::from("de7d8b078d63d5d9ad4e9df2f542eca6"),
+        Some(read),
     );
 
     trader
@@ -17,11 +32,12 @@ async fn main() {
         .await
         .expect("Failed to connect to the feed and recover from the latest snapshot");
 
+    println!("Started up with books: {:#?}", trader.books.keys());
+
     // tokio::spawn(async move {
     //     tokio::signal::ctrl_c().await;
     //     trader.shutdown();
     // });
-
     let mut exceptions = 0;
     loop {
         // TODO: don't wait for observations
@@ -34,18 +50,20 @@ async fn main() {
         if result.is_err() {
             exceptions += 1;
         }
-
+        println!("{}", trader.books.len());
         for (product, book) in trader.books.iter() {
             println!("{:#?}", trader.observations.get(&book.station_id));
             let credit = 10;
             let (best_bid, best_ask) = book.bbo();
+            println!("{:?}", best_bid);
+            println!("{:?}", best_ask);
             let result = trader
                 .place_order(
                     product,
-                    best_bid.map_or(types::Price(1000), |price| price.price + credit),
-                    types::Side::Buy,
-                    types::Volume(20),
-                    order::OrderType::Day,
+                    best_bid.map_or(Price(1000), |price| price.price + credit),
+                    Side::Buy,
+                    Volume(20),
+                    OrderType::Day,
                 )
                 .await;
             if result.is_err() {
@@ -54,10 +72,10 @@ async fn main() {
             let result = trader
                 .place_order(
                     product,
-                    best_ask.map_or(types::Price(5000), |price| price.price - credit),
-                    types::Side::Sell,
-                    types::Volume(20),
-                    order::OrderType::Day,
+                    best_ask.map_or(Price(5000), |price| price.price - credit),
+                    Side::Sell,
+                    Volume(20),
+                    OrderType::Day,
                 )
                 .await;
             if result.is_err() {

@@ -34,9 +34,7 @@ impl Add<u16> for Price {
 
 impl From<f64> for Price {
     fn from(price: f64) -> Self {
-        let price = price * 100.0;
-        assert!((price) % 1.0 == 0.0, "price must have 2 decimal places");
-        Price((price) as u16)
+        Price((price * 100.0) as u16)
     }
 }
 
