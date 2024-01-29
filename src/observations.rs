@@ -4,9 +4,13 @@ use crate::{
 };
 use serde::{de::Error, Deserialize, Deserializer};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{
+    cmp::Ordering,
+    collections::{BTreeSet, HashMap},
+    sync::{Arc, Mutex},
+};
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Observation {
     pub station: Station,
@@ -20,24 +24,46 @@ pub struct Observation {
     pub wind_direction: u32,
 }
 
-pub struct Observations {
-    pub observations: HashMap<Station, Vec<Observation>>,
+impl Ord for Observation {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.time.cmp(&other.time)
+    }
 }
 
-impl Observations {
-    pub async fn refresh_latest_observations(&mut self) -> Result<(), reqwest::Error> {
-        let response: Vec<Observation> =
-            reqwest::get(url!(AutoTrader::OBSERVATION_PORT, "current"))
-                .await?
-                .json()
-                .await?;
-        for observation in response {
-            self.observations
-                .entry(observation.station.clone())
-                .and_modify(|observations| observations.push(observation));
-        }
-        Ok(())
+impl PartialOrd for Observation {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
+}
+
+impl PartialEq for Observation {
+    fn eq(&self, other: &Self) -> bool {
+        self.time == other.time
+    }
+}
+
+impl Eq for Observation {}
+
+pub async fn refresh_latest_observations(
+    observations: Arc<Mutex<HashMap<Station, BTreeSet<Observation>>>>,
+) -> Result<(), reqwest::Error> {
+    let response: Vec<Observation> = reqwest::get(url!(AutoTrader::OBSERVATION_PORT, "current"))
+        .await?
+        .json()
+        .await?;
+    for observation in response {
+        let mut observations = observations.lock().unwrap();
+        if !observations.contains_key(&observation.station) {
+            observations.insert(observation.station.clone(), BTreeSet::new());
+        }
+        let existing_observations = observations
+            .get_mut(&observation.station)
+            .expect("observations.contains_key(&observation.station)");
+        if !existing_observations.contains(&observation) {
+            existing_observations.insert(observation);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]

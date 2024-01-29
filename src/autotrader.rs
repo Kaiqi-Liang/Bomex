@@ -789,12 +789,18 @@ mod tests {
         );
 
         parse_json!(trader, {
+            "type": "TRADING_HALT",
+            "product": product,
+            "sequence": 13
+        });
+
+        parse_json!(trader, {
             "type": "SETTLEMENT",
             "product": product,
             "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
             "expiry": "2024-01-04 09:50+1100",
             "price": 26.05,
-            "sequence": 13
+            "sequence": 14
         });
 
         assert_eq!(trader.books, HashMap::new());

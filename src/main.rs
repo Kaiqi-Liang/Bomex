@@ -1,3 +1,4 @@
+use std::sync::{Arc, Mutex};
 mod autotrader;
 mod book;
 mod feed;
@@ -5,18 +6,17 @@ mod observations;
 mod order;
 mod types;
 mod username;
-use std::collections::HashMap;
-
+use crate::observations::refresh_latest_observations;
+use crate::username::Username;
 use crate::{
     autotrader::ConstantPorts,
-    observations::Observations,
     order::OrderType,
     types::{Price, Side, Volume},
 };
 use autotrader::AutoTrader;
 use futures_util::StreamExt;
+use std::collections::HashMap;
 use tokio_tungstenite::connect_async;
-use username::Username;
 
 #[tokio::main]
 async fn main() {
@@ -44,29 +44,19 @@ async fn main() {
     //     tokio::signal::ctrl_c().await;
     //     trader.shutdown();
     // });
-    let mut exceptions = 0;
+    let observations = Arc::new(Mutex::new(HashMap::new()));
     loop {
-        // TODO: don't wait for observations
-        let mut observations = Observations {
-            observations: HashMap::new(),
-        };
-        let result = observations.refresh_latest_observations().await;
-        if result.is_err() {
-            exceptions += 1;
-        }
+        let observations_update = observations.clone();
+        tokio::spawn(async move {
+            let _ = refresh_latest_observations(observations_update).await;
+        });
 
-        let result = trader.poll().await;
-        if result.is_err() {
-            exceptions += 1;
-        }
-        println!("{}", trader.books.len());
         for (product, book) in trader.books.iter() {
-            println!("{:#?}", observations.observations.get(&book.station_id));
             let credit = 10;
             let (best_bid, best_ask) = book.bbo();
             println!("{:?}", best_bid);
             println!("{:?}", best_ask);
-            let result = trader
+            let _ = trader
                 .place_order(
                     product,
                     best_bid.map_or(Price(1000), |price| price.price + credit),
@@ -75,10 +65,7 @@ async fn main() {
                     OrderType::Day,
                 )
                 .await;
-            if result.is_err() {
-                exceptions += 1;
-            }
-            let result = trader
+            let _ = trader
                 .place_order(
                     product,
                     best_ask.map_or(Price(5000), |price| price.price - credit),
@@ -87,14 +74,6 @@ async fn main() {
                     OrderType::Day,
                 )
                 .await;
-            if result.is_err() {
-                exceptions += 1;
-            }
-        }
-
-        if exceptions > 100 {
-            break;
         }
     }
-    let _ = trader.shutdown().await;
 }
