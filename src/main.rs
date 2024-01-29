@@ -1,10 +1,15 @@
 mod autotrader;
 mod book;
 mod feed;
+mod observations;
 mod order;
 mod types;
 mod username;
+use std::collections::HashMap;
+
 use crate::{
+    autotrader::ConstantPorts,
+    observations::Observations,
     order::OrderType,
     types::{Price, Side, Volume},
 };
@@ -15,9 +20,10 @@ use username::Username;
 
 #[tokio::main]
 async fn main() {
-    let (stream, response) = connect_async("ws://sytev070:9000/information")
-        .await
-        .expect("Failed to connect to the websocket");
+    let (stream, response) =
+        connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
+            .await
+            .expect("Failed to connect to the websocket");
     println!("Server responded with headers: {:?}", response.headers());
     let (_, read) = stream.split();
 
@@ -41,7 +47,10 @@ async fn main() {
     let mut exceptions = 0;
     loop {
         // TODO: don't wait for observations
-        let result = trader.refresh_latest_observations().await;
+        let mut observations = Observations {
+            observations: HashMap::new(),
+        };
+        let result = observations.refresh_latest_observations().await;
         if result.is_err() {
             exceptions += 1;
         }
@@ -52,7 +61,7 @@ async fn main() {
         }
         println!("{}", trader.books.len());
         for (product, book) in trader.books.iter() {
-            println!("{:#?}", trader.observations.get(&book.station_id));
+            println!("{:#?}", observations.observations.get(&book.station_id));
             let credit = 10;
             let (best_bid, best_ask) = book.bbo();
             println!("{:?}", best_bid);

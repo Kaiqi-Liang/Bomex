@@ -2,7 +2,7 @@ use crate::{
     book::Book,
     feed::HasSequence,
     order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, OrderType},
-    types::{Observation, Price, Side, Station, Volume},
+    types::{Price, Side, Volume},
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
+#[macro_export]
 macro_rules! url {
     ($port:expr, $endpoint:expr) => {
         format!("http://{}:{}/{}", AutoTrader::HOSTNAME, $port, $endpoint)
@@ -51,12 +52,11 @@ pub struct AutoTrader {
     pub username: Username,
     pub password: String,
     pub books: HashMap<String, Book>,
-    pub observations: HashMap<Station, Vec<Observation>>,
     pub sequence: u32,
     pub stream: Option<Websocket>,
 }
 
-trait ConstantPorts {
+pub trait ConstantPorts {
     const OBSERVATION_PORT: u16;
     const EXECUTION_PORT: u16;
     const FEED_RECOVERY_PORT: u16;
@@ -76,7 +76,6 @@ impl AutoTrader {
             username,
             password,
             books: HashMap::new(),
-            observations: HashMap::new(),
             sequence: 0,
             stream,
         }
@@ -113,7 +112,10 @@ impl AutoTrader {
                 get_book!(self.books, trade).trade(trade, &self.username);
             }
             crate::feed::Message::Settlement(settlement) => {
-                println!("Book {} settles at {:?}", settlement.product, settlement.price);
+                println!(
+                    "Book {} settles at {:?}",
+                    settlement.product, settlement.price,
+                );
             }
             crate::feed::Message::Index(index) => {
                 println!("{index:#?}");
@@ -191,20 +193,6 @@ impl AutoTrader {
         Ok(())
     }
 
-    pub async fn refresh_latest_observations(&mut self) -> Result<(), reqwest::Error> {
-        let response: Vec<Observation> =
-            reqwest::get(url!(AutoTrader::OBSERVATION_PORT, "current"))
-                .await?
-                .json()
-                .await?;
-        for observation in response {
-            self.observations
-                .entry(observation.station.clone())
-                .and_modify(|observations| observations.push(observation));
-        }
-        Ok(())
-    }
-
     pub async fn shutdown(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.poll().await?;
         for id in self.books.keys() {
@@ -219,7 +207,7 @@ mod tests {
     use super::*;
     use crate::{
         book::{Order, Position, PriceLevel},
-        types::Station,
+        observations::Station,
     };
     use serde_json::{from_value, json};
     use std::collections::BTreeMap;

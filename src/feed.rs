@@ -1,5 +1,6 @@
 use crate::{
-    types::{Price, Side, Station, Volume},
+    observations::Station,
+    types::{Price, Side, Volume},
     username::Username,
 };
 use serde::{Deserialize, Deserializer};

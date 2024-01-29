@@ -1,6 +1,7 @@
 use crate::{
     feed::{AddedMessage, DeletedMessage, TradeMessage, TradeType},
-    types::{Price, Side, Station, Volume},
+    observations::Station,
+    types::{Price, Side, Volume},
     username::Username,
 };
 use std::collections::{BTreeMap, HashMap};
