@@ -12,18 +12,19 @@ pub fn find_arbs(books: MutexGuard<'_, HashMap<String, Book>>) -> Vec<AddMessage
     let mut orders = Vec::new();
     let indices: HashMap<String, Vec<&Book>> =
         books.values().fold(HashMap::new(), |mut acc, book| {
-            acc.entry(book.expiry.clone())
-                .or_default()
-                .push(book);
+            acc.entry(book.expiry.clone()).or_default().push(book);
             acc
         });
     for (_, index) in indices {
         let mut underlying_best_bids = Vec::new();
         let mut underlying_best_asks = Vec::new();
+        #[allow(unused_variables)]
         let mut index_best_bid = None;
+        #[allow(unused_variables)]
         let mut index_best_ask = None;
         for book in index {
             let (best_bid, best_ask) = book.bbo();
+            #[allow(unused_assignments)]
             if book.station_id == Station::Index {
                 index_best_bid = best_bid;
                 index_best_ask = best_ask;
@@ -32,15 +33,15 @@ pub fn find_arbs(books: MutexGuard<'_, HashMap<String, Book>>) -> Vec<AddMessage
                 underlying_best_asks.push(best_ask);
             }
         }
+        orders.push(AddMessage {
+            message_type: MessageType::Add,
+            product: "",
+            price: Price(0),
+            side: Side::Buy,
+            volume: Volume(1),
+            order_type: OrderType::Ioc,
+        });
     }
-    orders.push(AddMessage {
-        message_type: MessageType::Add,
-        product: "",
-        price: Price(0),
-        side: Side::Sell,
-        volume: Volume(20),
-        order_type: OrderType::Day,
-    });
     orders
 }
 

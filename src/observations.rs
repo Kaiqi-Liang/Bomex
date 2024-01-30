@@ -44,6 +44,7 @@ impl PartialEq for Observation {
 
 impl Eq for Observation {}
 
+#[allow(unused)]
 pub async fn refresh_latest_observations(
     observations: Arc<Mutex<HashMap<Station, BTreeSet<Observation>>>>,
 ) -> Result<(), reqwest::Error> {

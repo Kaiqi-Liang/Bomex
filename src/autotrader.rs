@@ -107,7 +107,8 @@ impl AutoTrader {
             self.books.lock().unwrap().keys(),
         );
 
-        let username = self.username.clone();
+        // TODO use self.username
+        // let username = self.username.clone();
         let password = self.password.clone();
         let readonly = self.books.clone();
         spawn(async move {
@@ -129,7 +130,7 @@ impl AutoTrader {
             crate::feed::Message::Future(future) => {
                 assert_eq!(
                     future.expiry, future.halt_time,
-                    "Expiry time should be the same as halt time"
+                    "Expiry time should be the same as halt time",
                 );
                 self.books.lock().unwrap().insert(
                     future.product.clone(),
@@ -165,6 +166,7 @@ impl AutoTrader {
         while let Some(message) = self.stream.as_mut().unwrap().next().await {
             let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
+            #[allow(clippy::comparison_chain)]
             if message.sequence() == next_sequence {
                 self.sequence = next_sequence;
                 self.parse_feed_message(message, State::Feed);

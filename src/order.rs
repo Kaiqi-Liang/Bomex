@@ -34,13 +34,13 @@ pub struct BulkDeleteMessage<'a> {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MessageType {
     Add,
-    #[allow(dead_code)]
+    #[allow(unused)]
     Delete,
-    #[allow(dead_code)]
+    #[allow(unused)]
     BulkDelete,
 }
 
-#[allow(dead_code)]
+#[allow(unused)]
 #[derive(PartialEq, Debug, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum OrderType {

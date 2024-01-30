@@ -94,7 +94,7 @@ pub enum TradeType {
 pub struct SettlementMessage {
     pub product: String,
     pub station_name: String,
-    #[allow(dead_code)]
+    #[allow(unused)]
     expiry: String,
     pub price: Price,
     pub sequence: u32,
@@ -102,7 +102,7 @@ pub struct SettlementMessage {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
+#[allow(unused)]
 pub struct IndexMessage {
     index_id: u32,
     index_name: String,
