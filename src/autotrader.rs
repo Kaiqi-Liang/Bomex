@@ -141,6 +141,36 @@ impl AutoTrader {
                     message.sequence()
                 );
             }
+            for (product, book) in self.books.iter() {
+                let credit = 10;
+                let volume = Volume(20);
+                let (best_bid, best_ask) = book.bbo();
+                println!("Best bid: {best_bid:?}");
+                println!("Best ask {best_ask:?}");
+                let result = self.place_order(
+                    product,
+                    best_bid.map_or(Price(1000), |price| price.price + credit),
+                    Side::Buy,
+                    volume,
+                    OrderType::Day,
+                )
+                .await;
+                if result.is_err() {
+                    println!("{}", result.err().expect("result.is_err()"));
+                }
+                let result = self
+                    .place_order(
+                        product,
+                        best_ask.map_or(Price(5000), |price| price.price - credit),
+                        Side::Sell,
+                        volume,
+                        OrderType::Day,
+                    )
+                    .await;
+                if result.is_err() {
+                    println!("{}", result.err().expect("result.is_err()"));
+                }
+            }
         }
         Ok(())
     }
@@ -192,14 +222,6 @@ impl AutoTrader {
                 product,
             })
         });
-        Ok(())
-    }
-
-    pub async fn shutdown(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Shutting down");
-        for id in self.books.keys() {
-            self.cancel_all_orders_in_book(id).await?;
-        }
         Ok(())
     }
 }

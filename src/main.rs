@@ -8,18 +8,14 @@ mod types;
 mod username;
 use crate::observations::refresh_latest_observations;
 use crate::username::Username;
-use crate::{
-    autotrader::ConstantPorts,
-    order::OrderType,
-    types::{Price, Side, Volume},
-};
+use crate::autotrader::ConstantPorts;
 use autotrader::AutoTrader;
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use tokio_tungstenite::connect_async;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (stream, response) =
         connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
             .await
@@ -45,49 +41,18 @@ async fn main() {
         trader.lock().await.books.keys(),
     );
 
-    let shutdown = trader.clone();
-    tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
-        let _ = shutdown.lock().await.shutdown().await;
-        std::process::exit(1);
-    });
-
-    let poll = trader.clone();
-    tokio::spawn(async move {
-        let _ = poll.lock().await.poll().await;
-    });
-
     let observations = Arc::new(std::sync::Mutex::new(HashMap::new()));
-    loop {
-        let observations_update = observations.clone();
-        tokio::spawn(async move {
-            let _ = refresh_latest_observations(observations_update).await;
-        });
-
-        let trader = trader.lock().await;
-        for (product, book) in trader.books.iter() {
-            let credit = 10;
-            let (best_bid, best_ask) = book.bbo();
-            println!("Best bid: {:?}", best_bid);
-            println!("Best ask {:?}", best_ask);
-            let _ = trader
-                .place_order(
-                    product,
-                    best_bid.map_or(Price(1000), |price| price.price + credit),
-                    Side::Buy,
-                    Volume(20),
-                    OrderType::Day,
-                )
-                .await;
-            let _ = trader
-                .place_order(
-                    product,
-                    best_ask.map_or(Price(5000), |price| price.price - credit),
-                    Side::Sell,
-                    Volume(20),
-                    OrderType::Day,
-                )
-                .await;
+    let observations_clone = observations.clone();
+    tokio::spawn(async move {
+        loop {
+            let result = refresh_latest_observations(observations_clone.clone()).await;
+            if result.is_err() {
+                println!("{}", result.err().expect("result.is_err()"));
+            }
         }
-    }
+    });
+    println!("{observations:#?}");
+
+    trader.lock().await.poll().await?;
+    Ok(())
 }
