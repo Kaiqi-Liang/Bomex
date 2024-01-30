@@ -19,6 +19,7 @@ pub enum Message<'a> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddMessage<'a> {
     #[serde(rename = "type")]
     pub message_type: MessageType,

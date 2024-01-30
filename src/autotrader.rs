@@ -6,6 +6,8 @@ use crate::{
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
+use reqwest::multipart::Part;
+use serde_json::{json, to_string, to_value};
 use std::collections::HashMap;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -27,14 +29,16 @@ macro_rules! url {
 }
 
 macro_rules! send_order {
-    ($message:expr) => {
+    ($self:expr, $message:expr) => {
+        let form = reqwest::multipart::Form::new()
+            .text("password", $self.password.clone())
+            .text("username", to_string(&$self.username)?)
+            .text("message", to_string(&$message)?);
         reqwest::Client::new()
             .post(url!(AutoTrader::EXECUTION_PORT, "execution"))
-            .json($message)
+            .multipart(form)
             .send()
-            .await?
-            .json()
-            .await?
+            .await?;
     };
 }
 
@@ -147,14 +151,15 @@ impl AutoTrader {
                 let (best_bid, best_ask) = book.bbo();
                 println!("Best bid: {best_bid:?}");
                 println!("Best ask {best_ask:?}");
-                let result = self.place_order(
-                    product,
-                    best_bid.map_or(Price(1000), |price| price.price + credit),
-                    Side::Buy,
-                    volume,
-                    OrderType::Day,
-                )
-                .await;
+                let result = self
+                    .place_order(
+                        product,
+                        best_bid.map_or(Price(1000), |price| price.price + credit),
+                        Side::Buy,
+                        volume,
+                        OrderType::Day,
+                    )
+                    .await;
                 if result.is_err() {
                     println!("{}", result.err().expect("result.is_err()"));
                 }
@@ -182,46 +187,50 @@ impl AutoTrader {
         side: Side,
         volume: Volume,
         order_type: OrderType,
-    ) -> Result<(), reqwest::Error> {
-        send_order!(&crate::order::Order {
-            username: &self.username,
-            password: &self.password,
-            message: crate::order::Message::Add(AddMessage {
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        send_order!(
+            self,
+            crate::order::Message::Add(AddMessage {
                 message_type: MessageType::Add,
                 product,
                 price,
                 side,
                 volume,
                 order_type,
-            }),
-        });
+            })
+        );
         Ok(())
     }
 
     #[allow(dead_code)]
-    pub async fn cancel_order(&self, product: &str, id: &str) -> Result<(), reqwest::Error> {
-        send_order!(&crate::order::Order {
-            username: &self.username,
-            password: &self.password,
-            message: crate::order::Message::Delete(DeleteMessage {
+    pub async fn cancel_order(
+        &self,
+        product: &str,
+        id: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        send_order!(
+            self,
+            crate::order::Message::Delete(DeleteMessage {
                 message_type: MessageType::Delete,
                 product,
                 id,
             })
-        });
+        );
         Ok(())
     }
 
-    pub async fn cancel_all_orders_in_book(&self, product: &str) -> Result<(), reqwest::Error> {
+    pub async fn cancel_all_orders_in_book(
+        &self,
+        product: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         println!("Cancelling all orders in book {}", product);
-        send_order!(&crate::order::Order {
-            username: &self.username,
-            password: &self.password,
-            message: crate::order::Message::BulkDelete(BulkDeleteMessage {
+        send_order!(
+            self,
+            crate::order::Message::BulkDelete(BulkDeleteMessage {
                 message_type: MessageType::BulkDelete,
                 product,
             })
-        });
+        );
         Ok(())
     }
 }
