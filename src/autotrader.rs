@@ -6,10 +6,10 @@ use crate::{
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
-use reqwest::multipart::Part;
-use serde_json::{json, to_string, to_value};
+use reqwest::Response;
+use serde_json::to_string;
 use std::collections::HashMap;
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, spawn};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 #[macro_export]
@@ -29,16 +29,21 @@ macro_rules! url {
 }
 
 macro_rules! send_order {
-    ($self:expr, $message:expr) => {
-        let form = reqwest::multipart::Form::new()
-            .text("password", $self.password.clone())
-            .text("username", to_string(&$self.username)?)
-            .text("message", to_string(&$message)?);
+    ($username:expr, $password:expr, $message:expr) => {
         reqwest::Client::new()
             .post(url!(AutoTrader::EXECUTION_PORT, "execution"))
-            .multipart(form)
+            .multipart(
+                reqwest::multipart::Form::new()
+                    .text("username", to_string(&$username).unwrap())
+                    .text("password", $password.clone())
+                    .text("message", to_string(&$message).unwrap()),
+            )
             .send()
-            .await?;
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
     };
 }
 
@@ -100,7 +105,7 @@ impl AutoTrader {
 
     /// Outbound decoder for feed
     fn parse_feed_message(&mut self, message: crate::feed::Message) {
-        // println!("{:#?}", message);
+        println!("{:#?}", message);
         match message {
             crate::feed::Message::Future(future) => {
                 self.books
@@ -146,93 +151,77 @@ impl AutoTrader {
                 );
             }
             for (product, book) in self.books.iter() {
-                let credit = 10;
-                let volume = Volume(20);
+                let username = self.username.clone();
+                let password = self.password.clone();
+                let product = product.clone();
                 let (best_bid, best_ask) = book.bbo();
-                println!("Best bid: {best_bid:?}");
-                println!("Best ask {best_ask:?}");
-                let result = self
-                    .place_order(
-                        product,
-                        best_bid.map_or(Price(1000), |price| price.price + credit),
-                        Side::Buy,
-                        volume,
-                        OrderType::Day,
-                    )
-                    .await;
-                if result.is_err() {
-                    println!("{}", result.err().expect("result.is_err()"));
-                }
-                let result = self
-                    .place_order(
-                        product,
-                        best_ask.map_or(Price(5000), |price| price.price - credit),
-                        Side::Sell,
-                        volume,
-                        OrderType::Day,
-                    )
-                    .await;
-                if result.is_err() {
-                    println!("{}", result.err().expect("result.is_err()"));
-                }
+                spawn(async move {
+                    let credit = 10;
+                    let volume = Volume(2);
+                    let result = send_order!(
+                        username,
+                        password,
+                        crate::order::Message::Add(AddMessage {
+                            message_type: MessageType::Add,
+                            product: &product,
+                            price: best_bid.map_or(Price(1000), |price| price.price + credit),
+                            side: Side::Buy,
+                            volume,
+                            order_type: OrderType::Day,
+                        })
+                    );
+                    println!("{:?}", result);
+                    let result = send_order!(
+                        username,
+                        password,
+                        crate::order::Message::Add(AddMessage {
+                            message_type: MessageType::Add,
+                            product: &product,
+                            price: best_ask.map_or(Price(5000), |price| price.price - credit),
+                            side: Side::Sell,
+                            volume,
+                            order_type: OrderType::Day,
+                        })
+                    );
+                    println!("{:?}", result);
+                });
             }
         }
         Ok(())
     }
 
-    pub async fn place_order(
-        &self,
-        product: &str,
-        price: Price,
-        side: Side,
-        volume: Volume,
-        order_type: OrderType,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        send_order!(
-            self,
-            crate::order::Message::Add(AddMessage {
-                message_type: MessageType::Add,
-                product,
-                price,
-                side,
-                volume,
-                order_type,
-            })
-        );
-        Ok(())
-    }
+    // #[allow(dead_code)]
+    // pub async fn cancel_order(
+    //     &self,
+    //     product: &str,
+    //     id: &str,
+    // ) -> Result<Response, Box<dyn std::error::Error>> {
+    //     Ok(send_order!(
+    //         self.username,
+    //         self.password,
+    //         crate::order::Message::Delete(DeleteMessage {
+    //             message_type: MessageType::Delete,
+    //             product,
+    //             id,
+    //         })
+    //     ))
+    // }
 
-    #[allow(dead_code)]
-    pub async fn cancel_order(
-        &self,
-        product: &str,
-        id: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        send_order!(
-            self,
-            crate::order::Message::Delete(DeleteMessage {
-                message_type: MessageType::Delete,
-                product,
-                id,
-            })
-        );
-        Ok(())
-    }
-
-    pub async fn cancel_all_orders_in_book(
-        &self,
-        product: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Cancelling all orders in book {}", product);
-        send_order!(
-            self,
-            crate::order::Message::BulkDelete(BulkDeleteMessage {
-                message_type: MessageType::BulkDelete,
-                product,
-            })
-        );
-        Ok(())
-    }
+    // #[allow(dead_code)]
+    // pub async fn cancel_all_orders_in_book(
+    //     &self,
+    //     product: &str,
+    // ) -> Result<Response, Box<dyn std::error::Error>> {
+    //     println!("Cancelling all orders in book {}", product);
+    //     Ok(send_order!(
+    //         self.username,
+    //         self.password,
+    //         crate::order::Message::BulkDelete(BulkDeleteMessage {
+    //             message_type: MessageType::BulkDelete,
+    //             product,
+    //         })
+    //     ))
+    // }
 }
 
 #[cfg(test)]
