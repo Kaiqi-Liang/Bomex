@@ -30,20 +30,21 @@ macro_rules! url {
 
 macro_rules! send_order {
     ($username:expr, $password:expr, $message:expr) => {
-        reqwest::Client::new()
+        let form = reqwest::multipart::Form::new()
+            .text("username", to_string(&$username).unwrap())
+            .text("password", $password.clone())
+            .text("message", to_string(&$message).unwrap());
+        println!("{:#?}", form);
+        let result = reqwest::Client::new()
             .post(url!(AutoTrader::EXECUTION_PORT, "execution"))
-            .multipart(
-                reqwest::multipart::Form::new()
-                    .text("username", to_string(&$username).unwrap())
-                    .text("password", $password.clone())
-                    .text("message", to_string(&$message).unwrap()),
-            )
+            .multipart(form)
             .send()
             .await
             .unwrap()
             .text()
             .await
-            .unwrap()
+            .unwrap();
+        println!("{:?}", result);
     };
 }
 
@@ -158,7 +159,7 @@ impl AutoTrader {
                 spawn(async move {
                     let credit = 10;
                     let volume = Volume(2);
-                    let result = send_order!(
+                    send_order!(
                         username,
                         password,
                         crate::order::Message::Add(AddMessage {
@@ -170,8 +171,7 @@ impl AutoTrader {
                             order_type: OrderType::Day,
                         })
                     );
-                    println!("{:?}", result);
-                    let result = send_order!(
+                    send_order!(
                         username,
                         password,
                         crate::order::Message::Add(AddMessage {
@@ -183,7 +183,6 @@ impl AutoTrader {
                             order_type: OrderType::Day,
                         })
                     );
-                    println!("{:?}", result);
                 });
             }
         }
