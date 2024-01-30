@@ -8,6 +8,7 @@ use crate::{
 };
 
 pub fn find_arbs(books: MutexGuard<'_, HashMap<String, Book>>) -> Vec<AddMessage<'_>> {
+    // TODO: complete this strategy
     let mut orders = Vec::new();
     let indices: HashMap<String, Vec<&Book>> =
         books.values().fold(HashMap::new(), |mut acc, book| {
@@ -48,27 +49,75 @@ mod tests {
     use super::*;
     use crate::book::Position;
     use std::{collections::BTreeMap, sync::Mutex};
+    static EXPIRY: &str = "2024-01-04 09:50+1100";
 
     #[test]
-    fn test_no_arbs() {
+    fn test_no_orders() {
         let books = Mutex::new(HashMap::new());
         assert_eq!(find_arbs(books.lock().unwrap()), vec![]);
     }
 
     #[test]
-    fn test_buy_underlying_sell_etf() {
-        let expiry = String::from("2024-01-04 09:50+1100");
+    fn test_no_best_bid() {
         let books = Mutex::new(HashMap::from([
             (
                 String::from("1"),
                 Book {
                     bids: BTreeMap::from([(Price(1200), Volume(20)), (Price(1100), Volume(11))]),
-                    asks: BTreeMap::from([(Price(1300), Volume(1))]),
+                    asks: BTreeMap::from([(Price(1000), Volume(5)), (Price(1050), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
                     product: String::from("1"),
                     station_id: Station::Index,
-                    expiry: expiry.clone(),
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                String::from("2"),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::from([
+                        (Price(300), Volume(1)),
+                        (Price(400), Volume(2)),
+                        (Price(500), Volume(2)),
+                        (Price(600), Volume(8)),
+                    ]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("2"),
+                    station_id: Station::SydAirport,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                String::from("3"),
+                Book {
+                    bids: BTreeMap::from([(Price(500), Volume(1)), (Price(300), Volume(8))]),
+                    asks: BTreeMap::from([(Price(700), Volume(9)), (Price(800), Volume(1))]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("3"),
+                    station_id: Station::CanberraAirport,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+        ]));
+        assert_eq!(find_arbs(books.lock().unwrap()), vec![]);
+    }
+
+    #[test]
+    fn test_no_best_ask() {
+        let books = Mutex::new(HashMap::from([
+            (
+                String::from("1"),
+                Book {
+                    bids: BTreeMap::from([(Price(1200), Volume(20)), (Price(1100), Volume(11))]),
+                    asks: BTreeMap::new(),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("1"),
+                    station_id: Station::Index,
+                    expiry: EXPIRY.to_string(),
                 },
             ),
             (
@@ -85,7 +134,7 @@ mod tests {
                     position: Position::default(),
                     product: String::from("2"),
                     station_id: Station::SydAirport,
-                    expiry: expiry.clone(),
+                    expiry: EXPIRY.to_string(),
                 },
             ),
             (
@@ -97,7 +146,103 @@ mod tests {
                     position: Position::default(),
                     product: String::from("3"),
                     station_id: Station::CanberraAirport,
-                    expiry: expiry.clone(),
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+        ]));
+        assert_eq!(find_arbs(books.lock().unwrap()), vec![]);
+    }
+
+    #[test]
+    fn test_no_arbs() {
+        let books = Mutex::new(HashMap::from([
+            (
+                String::from("1"),
+                Book {
+                    bids: BTreeMap::from([(Price(700), Volume(20)), (Price(500), Volume(11))]),
+                    asks: BTreeMap::from([(Price(1000), Volume(5)), (Price(1050), Volume(1))]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("1"),
+                    station_id: Station::Index,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                String::from("2"),
+                Book {
+                    bids: BTreeMap::from([(Price(200), Volume(6)), (Price(100), Volume(5))]),
+                    asks: BTreeMap::from([
+                        (Price(300), Volume(1)),
+                        (Price(400), Volume(2)),
+                        (Price(500), Volume(2)),
+                        (Price(600), Volume(8)),
+                    ]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("2"),
+                    station_id: Station::SydAirport,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                String::from("3"),
+                Book {
+                    bids: BTreeMap::from([(Price(500), Volume(1)), (Price(300), Volume(8))]),
+                    asks: BTreeMap::from([(Price(700), Volume(9)), (Price(800), Volume(1))]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("3"),
+                    station_id: Station::CanberraAirport,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+        ]));
+        assert_eq!(find_arbs(books.lock().unwrap()), vec![]);
+    }
+
+    #[test]
+    fn test_buy_underlying_sell_etf() {
+        let books = Mutex::new(HashMap::from([
+            (
+                String::from("1"),
+                Book {
+                    bids: BTreeMap::from([(Price(1200), Volume(20)), (Price(1100), Volume(11))]),
+                    asks: BTreeMap::from([(Price(1300), Volume(1))]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("1"),
+                    station_id: Station::Index,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                String::from("2"),
+                Book {
+                    bids: BTreeMap::from([(Price(200), Volume(6)), (Price(100), Volume(5))]),
+                    asks: BTreeMap::from([
+                        (Price(300), Volume(1)),
+                        (Price(400), Volume(2)),
+                        (Price(500), Volume(2)),
+                        (Price(600), Volume(8)),
+                    ]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("2"),
+                    station_id: Station::SydAirport,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                String::from("3"),
+                Book {
+                    bids: BTreeMap::from([(Price(500), Volume(1)), (Price(300), Volume(8))]),
+                    asks: BTreeMap::from([(Price(700), Volume(9)), (Price(800), Volume(1))]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: String::from("3"),
+                    station_id: Station::CanberraAirport,
+                    expiry: EXPIRY.to_string(),
                 },
             ),
         ]));
@@ -153,7 +298,7 @@ mod tests {
                     position: Position::default(),
                     product: String::from("1"),
                     station_id: Station::Index,
-                    expiry: expiry.clone(),
+                    expiry: EXPIRY.to_string(),
                 },
             ),
             (
@@ -170,7 +315,7 @@ mod tests {
                     position: Position::default(),
                     product: String::from("2"),
                     station_id: Station::SydAirport,
-                    expiry: expiry.clone(),
+                    expiry: EXPIRY.to_string(),
                 },
             ),
             (
