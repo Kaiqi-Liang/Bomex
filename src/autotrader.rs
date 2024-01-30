@@ -1,11 +1,4 @@
-use crate::{
-    book::Book,
-    feed::HasSequence,
-    observations::Station,
-    order::{AddMessage, MessageType, OrderType},
-    types::{Price, Side, Volume},
-    username::Username,
-};
+use crate::{arbitrage::find_arbs, book::Book, feed::HasSequence, username::Username};
 use futures_util::stream::{SplitStream, StreamExt};
 use serde_json::to_string;
 use std::{
@@ -41,11 +34,10 @@ macro_rules! send_order {
                 ("message", &to_string(&$message).unwrap()),
             ])
             .send()
-            .await
-            .unwrap()
-            .text()
             .await;
-        println!("result: {:?}\n\n\n", result);
+        if result.is_err() {
+            println!("{result:#?}");
+        }
     };
 }
 
@@ -110,7 +102,6 @@ impl AutoTrader {
             self.sequence = message.sequence();
             self.parse_feed_message(message, State::Recovery);
         }
-
         println!(
             "Finished recovery with following books: {:#?}",
             self.books.lock().unwrap().keys(),
@@ -119,60 +110,14 @@ impl AutoTrader {
         let username = self.username.clone();
         let password = self.password.clone();
         let readonly = self.books.clone();
-        // spawn(async move {
-        //     loop {
-        //         {
-        //             let books = readonly.lock().unwrap();
-        //             let indices: HashMap<String, Vec<&Book>> =
-        //                 books.values().fold(HashMap::new(), |mut acc, book| {
-        //                     acc.entry(book.expiry.clone())
-        //                         .or_insert_with(Vec::new)
-        //                         .push(book);
-        //                     acc
-        //                 });
-        //             for (_, index) in indices {
-        //                 // let (mut index_best_bid, mut index_best_ask, mut underlying_best_bid, mut underlying_best_ask) = (None, None, None, None);
-        //                 // // index.iter().fold(init, f)
-        //                 // for book in index {
-        //                 //     let (best_bid, best_ask) = book.bbo();
-        //                 //     if book.station_id == Station::Index {
-        //                 //         index_best_bid = best_bid;
-        //                 //         index_best_ask = best_ask;
-        //                 //     } else {
-        //                 //         // underlying_best_bid = best_bid.map
-        //                 //     }
-        //                 // }
-        //             }
-        //         }
-        //         let product = "";
-        //         let volume = Volume(2);
-        //         let credit = 10;
-        //         send_order!(
-        //             "kliang",
-        //             password,
-        //             AddMessage {
-        //                 message_type: MessageType::Add,
-        //                 product: &product,
-        //                 price: Price(0),
-        //                 side: Side::Buy,
-        //                 volume,
-        //                 order_type: OrderType::Day,
-        //             }
-        //         );
-        //         send_order!(
-        //             "kliang",
-        //             password,
-        //             AddMessage {
-        //                 message_type: MessageType::Add,
-        //                 product: &product,
-        //                 price: Price(0),
-        //                 side: Side::Sell,
-        //                 volume,
-        //                 order_type: OrderType::Day,
-        //             }
-        //         );
-        //     }
-        // });
+        spawn(async move {
+            loop {
+                let orders = find_arbs(readonly.lock().unwrap());
+                for order in orders {
+                    send_order!("kliang", password, order);
+                }
+            }
+        });
         self.poll().await?;
         Ok(())
     }
@@ -241,6 +186,7 @@ mod tests {
     use crate::{
         book::{Order, Position, PriceLevel},
         observations::Station,
+        types::{Price, Volume},
     };
     use serde_json::{from_value, json};
     use std::collections::BTreeMap;

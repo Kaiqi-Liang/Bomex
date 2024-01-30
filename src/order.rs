@@ -1,7 +1,7 @@
 use crate::types::{Price, Side, Volume};
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(PartialEq, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddMessage<'a> {
     #[serde(rename = "type")]
@@ -30,7 +30,7 @@ pub struct BulkDeleteMessage<'a> {
     pub product: &'a str,
 }
 
-#[derive(Serialize)]
+#[derive(PartialEq, Debug, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MessageType {
     Add,
@@ -41,7 +41,7 @@ pub enum MessageType {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize)]
+#[derive(PartialEq, Debug, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum OrderType {
     Day,

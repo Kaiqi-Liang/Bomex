@@ -35,7 +35,7 @@ impl From<AddedMessage> for Order {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq)]
 pub struct Position {
     pub bid_exposure: Volume, // open bid exposure in the market
     pub ask_exposure: Volume, // open ask exposure in the market

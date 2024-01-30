@@ -1,4 +1,5 @@
 // use std::sync::Arc;
+mod arbitrage;
 mod autotrader;
 mod book;
 mod feed;

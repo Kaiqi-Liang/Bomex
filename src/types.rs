@@ -66,7 +66,7 @@ impl<'de> Deserialize<'de> for Price {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy, Serialize, Deserialize)]
 pub struct Volume(pub u16);
 
 impl Debug for Volume {
