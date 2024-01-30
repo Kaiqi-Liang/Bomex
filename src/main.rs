@@ -1,4 +1,4 @@
-use std::sync::Arc;
+// use std::sync::Arc;
 mod autotrader;
 mod book;
 mod feed;
@@ -7,15 +7,26 @@ mod order;
 mod types;
 mod username;
 use crate::autotrader::ConstantPorts;
-use crate::observations::refresh_latest_observations;
+// use crate::observations::refresh_latest_observations;
 use crate::username::Username;
 use autotrader::AutoTrader;
 use futures_util::StreamExt;
-use std::collections::HashMap;
+// use std::collections::HashMap;
 use tokio_tungstenite::connect_async;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // let observations = Arc::new(std::sync::Mutex::new(HashMap::new()));
+    // let observations_clone = observations.clone();
+    // tokio::spawn(async move {
+    //     loop {
+    //         let result = refresh_latest_observations(observations_clone.clone()).await;
+    //         if result.is_err() {
+    //             println!("{}", result.err().expect("result.is_err()"));
+    //         }
+    //     }
+    // });
+
     let (stream, response) =
         connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
             .await
@@ -33,20 +44,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .startup()
         .await
         .expect("Failed to connect to the feed and recover from the latest snapshot");
-
-    println!("Started up with books: {:#?}", trader.books.keys(),);
-
-    let observations = Arc::new(std::sync::Mutex::new(HashMap::new()));
-    let observations_clone = observations.clone();
-    tokio::spawn(async move {
-        loop {
-            let result = refresh_latest_observations(observations_clone.clone()).await;
-            if result.is_err() {
-                println!("{}", result.err().expect("result.is_err()"));
-            }
-        }
-    });
-
-    trader.poll().await?;
     Ok(())
 }

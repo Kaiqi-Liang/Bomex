@@ -1,13 +1,17 @@
 use crate::{
     book::Book,
     feed::HasSequence,
-    order::{AddMessage, BulkDeleteMessage, DeleteMessage, MessageType, OrderType},
+    observations::Station,
+    order::{AddMessage, MessageType, OrderType},
     types::{Price, Side, Volume},
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
 use serde_json::to_string;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use tokio::{net::TcpStream, spawn};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
@@ -48,9 +52,17 @@ macro_rules! send_order {
 macro_rules! get_book {
     ($books:expr, $message:ident) => {
         $books
+            .lock()
+            .unwrap()
             .get_mut(&$message.product)
             .expect("Product is not in the books")
     };
+}
+
+#[derive(PartialEq)]
+pub enum State {
+    Recovery,
+    Feed,
 }
 
 type Websocket = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
@@ -58,7 +70,7 @@ type Websocket = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 pub struct AutoTrader {
     pub username: Username,
     pub password: String,
-    pub books: HashMap<String, Book>,
+    pub books: Arc<Mutex<HashMap<String, Book>>>,
     pub sequence: u32,
     pub stream: Option<Websocket>,
 }
@@ -82,13 +94,13 @@ impl AutoTrader {
         AutoTrader {
             username,
             password,
-            books: HashMap::new(),
+            books: Arc::new(Mutex::new(HashMap::new())),
             sequence: 0,
             stream,
         }
     }
 
-    pub async fn startup(&mut self) -> Result<(), reqwest::Error> {
+    pub async fn startup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let messages: Vec<crate::feed::Message> =
             reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
                 .await?
@@ -96,18 +108,88 @@ impl AutoTrader {
                 .await?;
         for message in messages {
             self.sequence = message.sequence();
-            self.parse_feed_message(message);
+            self.parse_feed_message(message, State::Recovery);
         }
+
+        println!(
+            "Finished recovery with following books: {:#?}",
+            self.books.lock().unwrap().keys(),
+        );
+
+        let username = self.username.clone();
+        let password = self.password.clone();
+        let readonly = self.books.clone();
+        // spawn(async move {
+        //     loop {
+        //         {
+        //             let books = readonly.lock().unwrap();
+        //             let indices: HashMap<String, Vec<&Book>> =
+        //                 books.values().fold(HashMap::new(), |mut acc, book| {
+        //                     acc.entry(book.expiry.clone())
+        //                         .or_insert_with(Vec::new)
+        //                         .push(book);
+        //                     acc
+        //                 });
+        //             for (_, index) in indices {
+        //                 // let (mut index_best_bid, mut index_best_ask, mut underlying_best_bid, mut underlying_best_ask) = (None, None, None, None);
+        //                 // // index.iter().fold(init, f)
+        //                 // for book in index {
+        //                 //     let (best_bid, best_ask) = book.bbo();
+        //                 //     if book.station_id == Station::Index {
+        //                 //         index_best_bid = best_bid;
+        //                 //         index_best_ask = best_ask;
+        //                 //     } else {
+        //                 //         // underlying_best_bid = best_bid.map
+        //                 //     }
+        //                 // }
+        //             }
+        //         }
+        //         let product = "";
+        //         let volume = Volume(2);
+        //         let credit = 10;
+        //         send_order!(
+        //             "kliang",
+        //             password,
+        //             AddMessage {
+        //                 message_type: MessageType::Add,
+        //                 product: &product,
+        //                 price: Price(0),
+        //                 side: Side::Buy,
+        //                 volume,
+        //                 order_type: OrderType::Day,
+        //             }
+        //         );
+        //         send_order!(
+        //             "kliang",
+        //             password,
+        //             AddMessage {
+        //                 message_type: MessageType::Add,
+        //                 product: &product,
+        //                 price: Price(0),
+        //                 side: Side::Sell,
+        //                 volume,
+        //                 order_type: OrderType::Day,
+        //             }
+        //         );
+        //     }
+        // });
+        self.poll().await?;
         Ok(())
     }
 
     /// Outbound decoder for feed
-    fn parse_feed_message(&mut self, message: crate::feed::Message) {
+    fn parse_feed_message(&mut self, message: crate::feed::Message, state: State) {
         println!("{:#?}", message);
         match message {
             crate::feed::Message::Future(future) => {
-                self.books
-                    .insert(future.product, Book::new(future.station_id));
+                assert_eq!(
+                    future.expiry, future.halt_time,
+                    "Expiry time should be the same as halt time"
+                );
+                self.books.lock().unwrap().insert(
+                    future.product.clone(),
+                    Book::new(future.product, future.station_id, future.expiry),
+                );
             }
             crate::feed::Message::Added(added) => {
                 get_book!(self.books, added).add_order(added, &self.username);
@@ -116,7 +198,7 @@ impl AutoTrader {
                 get_book!(self.books, deleted).remove_order(deleted, &self.username);
             }
             crate::feed::Message::Trade(trade) => {
-                get_book!(self.books, trade).trade(trade, &self.username);
+                get_book!(self.books, trade).trade(trade, &self.username, state);
             }
             crate::feed::Message::Settlement(settlement) => {
                 println!(
@@ -125,54 +207,22 @@ impl AutoTrader {
                 );
             }
             crate::feed::Message::Index(index) => {
-                println!("{index:#?}");
+                println!("Index definition: {index:#?}");
             }
             crate::feed::Message::TradingHalt(halt) => {
-                self.books.remove(&halt.product);
+                self.books.lock().unwrap().remove(&halt.product);
             }
         }
     }
 
     pub async fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("Polling websocket");
-        for (product, book) in self.books.iter() {
-            let username = self.username.clone();
-            let password = self.password.clone();
-            let product = product.clone();
-            let (best_bid, best_ask) = book.bbo();
-            let volume = Volume(2);
-            let credit = 10;
-            send_order!(
-                "kliang",
-                password,
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: &product,
-                    price: best_bid.map_or(Price(1000), |price| price.price + credit),
-                    side: Side::Buy,
-                    volume,
-                    order_type: OrderType::Day,
-                }
-            );
-            send_order!(
-                "kliang",
-                password,
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: &product,
-                    price: best_ask.map_or(Price(5000), |price| price.price - credit),
-                    side: Side::Sell,
-                    volume,
-                    order_type: OrderType::Day,
-                }
-            );
-        }
         while let Some(message) = self.stream.as_mut().unwrap().next().await {
             let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
             if message.sequence() == next_sequence {
                 self.sequence = next_sequence;
-                self.parse_feed_message(message);
+                self.parse_feed_message(message, State::Feed);
             } else if message.sequence() > next_sequence {
                 panic!(
                     "Expecting sequence number {} but got {}",
@@ -180,9 +230,6 @@ impl AutoTrader {
                     message.sequence()
                 );
             }
-            // for (product, book) in self.books.iter() {
-            //     spawn(async move {});
-            // }
         }
         Ok(())
     }
@@ -202,24 +249,26 @@ mod tests {
         ($trader:ident, $json:tt) => {
             $trader.parse_feed_message(
                 from_value(json!($json)).expect("Failed to parse feed message"),
+                State::Feed,
             );
         };
     }
 
     #[test]
-    fn test_parse_feed_message() {
+    fn test_feed() {
         let mut trader = AutoTrader::new(Username::KLiang, String::new(), None);
-        assert_eq!(trader.books, HashMap::new());
+        assert_eq!(*trader.books.lock().unwrap(), HashMap::new());
 
         let product = String::from("F_SOP_APP0104T0950");
+        let expiry = String::from("2024-01-04 09:50+1100");
 
         parse_json!(trader, {
             "type": "FUTURE",
             "product": product,
             "stationId": 66212,
             "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
-            "expiry": "2024-01-04 09:50+1100",
-            "haltTime": "2024-01-04 09:50+1100",
+            "expiry": expiry,
+            "haltTime": expiry,
             "unit": "APPARENT_TEMP",
             "strike": 0,
             "aggressiveFee": 0,
@@ -246,6 +295,8 @@ mod tests {
         assert_eq!(
             trader
                 .books
+                .lock()
+                .unwrap()
                 .get(&product)
                 .expect("Book does not exist")
                 .bbo(),
@@ -258,7 +309,7 @@ mod tests {
             )
         );
         assert_eq!(
-            trader.books,
+            *trader.books.lock().unwrap(),
             HashMap::from([(
                 product.clone(),
                 Book {
@@ -277,7 +328,9 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
+                    product: product.clone(),
                     station_id: Station::SydOlympicPark,
+                    expiry: expiry.clone(),
                 },
             )])
         );
@@ -321,6 +374,8 @@ mod tests {
         assert_eq!(
             trader
                 .books
+                .lock()
+                .unwrap()
                 .get(&product)
                 .expect("Book does not exist")
                 .bbo(),
@@ -336,7 +391,7 @@ mod tests {
             )
         );
         assert_eq!(
-            trader.books,
+            *trader.books.lock().unwrap(),
             HashMap::from([(
                 product.clone(),
                 Book {
@@ -381,7 +436,9 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
+                    product: product.clone(),
                     station_id: Station::SydOlympicPark,
+                    expiry: expiry.clone(),
                 },
             )])
         );
@@ -397,6 +454,8 @@ mod tests {
         assert_eq!(
             trader
                 .books
+                .lock()
+                .unwrap()
                 .get(&product)
                 .expect("Book does not exist")
                 .bbo(),
@@ -412,7 +471,7 @@ mod tests {
             )
         );
         assert_eq!(
-            trader.books,
+            *trader.books.lock().unwrap(),
             HashMap::from([(
                 product.clone(),
                 Book {
@@ -449,7 +508,9 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: 0,
                     },
+                    product: product.clone(),
                     station_id: Station::SydOlympicPark,
+                    expiry: expiry.clone(),
                 },
             )])
         );
@@ -493,6 +554,8 @@ mod tests {
         assert_eq!(
             trader
                 .books
+                .lock()
+                .unwrap()
                 .get(&product)
                 .expect("Book does not exist")
                 .bbo(),
@@ -508,7 +571,7 @@ mod tests {
             )
         );
         assert_eq!(
-            trader.books,
+            *trader.books.lock().unwrap(),
             HashMap::from([(
                 product.clone(),
                 Book {
@@ -577,7 +640,9 @@ mod tests {
                         ask_exposure: Volume(1),
                         position: 0,
                     },
+                    product: product.clone(),
                     station_id: Station::SydOlympicPark,
+                    expiry: expiry.clone(),
                 },
             )])
         );
@@ -599,6 +664,8 @@ mod tests {
         assert_eq!(
             trader
                 .books
+                .lock()
+                .unwrap()
                 .get(&product)
                 .expect("Book does not exist")
                 .bbo(),
@@ -614,7 +681,7 @@ mod tests {
             )
         );
         assert_eq!(
-            trader.books,
+            *trader.books.lock().unwrap(),
             HashMap::from([(
                 product.clone(),
                 Book {
@@ -671,7 +738,9 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: -1,
                     },
+                    product: product.clone(),
                     station_id: Station::SydOlympicPark,
+                    expiry: expiry.clone(),
                 },
             )])
         );
@@ -709,6 +778,8 @@ mod tests {
         assert_eq!(
             trader
                 .books
+                .lock()
+                .unwrap()
                 .get(&product)
                 .expect("Book does not exist")
                 .bbo(),
@@ -724,7 +795,7 @@ mod tests {
             )
         );
         assert_eq!(
-            trader.books,
+            *trader.books.lock().unwrap(),
             HashMap::from([(
                 product.clone(),
                 Book {
@@ -769,7 +840,9 @@ mod tests {
                         ask_exposure: Volume(0),
                         position: -1,
                     },
+                    product: product.clone(),
                     station_id: Station::SydOlympicPark,
+                    expiry: expiry.clone(),
                 },
             )])
         );
@@ -784,11 +857,11 @@ mod tests {
             "type": "SETTLEMENT",
             "product": product,
             "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
-            "expiry": "2024-01-04 09:50+1100",
+            "expiry": expiry,
             "price": 26.05,
             "sequence": 14
         });
 
-        assert_eq!(trader.books, HashMap::new());
+        assert_eq!(*trader.books.lock().unwrap(), HashMap::new());
     }
 }
