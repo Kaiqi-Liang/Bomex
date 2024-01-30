@@ -44,4 +44,10 @@ pub enum Username {
     RXu,
     WBarnett,
     WBrick,
+    Bybit,
+    Ftx,
+    Binance,
+    JBoon,
+    MTiernan,
+    ABarry,
 }

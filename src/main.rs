@@ -52,6 +52,11 @@ async fn main() {
         std::process::exit(1);
     });
 
+    let poll = trader.clone();
+    tokio::spawn(async move {
+        let _ = poll.lock().await.poll().await;
+    });
+
     let observations = Arc::new(std::sync::Mutex::new(HashMap::new()));
     loop {
         let observations_update = observations.clone();
@@ -59,18 +64,13 @@ async fn main() {
             let _ = refresh_latest_observations(observations_update).await;
         });
 
-        let trader_clone = trader.clone();
-        tokio::spawn(async move {
-            let _ = trader_clone.lock().await.poll().await;
-        });
-        for (product, book) in trader.lock().await.books.iter() {
+        let trader = trader.lock().await;
+        for (product, book) in trader.books.iter() {
             let credit = 10;
             let (best_bid, best_ask) = book.bbo();
-            println!("{:?}", best_bid);
-            println!("{:?}", best_ask);
+            println!("Best bid: {:?}", best_bid);
+            println!("Best ask {:?}", best_ask);
             let _ = trader
-                .lock()
-                .await
                 .place_order(
                     product,
                     best_bid.map_or(Price(1000), |price| price.price + credit),
@@ -80,8 +80,6 @@ async fn main() {
                 )
                 .await;
             let _ = trader
-                .lock()
-                .await
                 .place_order(
                     product,
                     best_ask.map_or(Price(5000), |price| price.price - credit),

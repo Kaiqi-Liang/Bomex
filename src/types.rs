@@ -66,8 +66,14 @@ impl<'de> Deserialize<'de> for Price {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct Volume(pub u16);
+
+impl Debug for Volume {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", to_underlying!(self))
+    }
+}
 
 impl PartialEq for Volume {
     fn eq(&self, other: &Volume) -> bool {

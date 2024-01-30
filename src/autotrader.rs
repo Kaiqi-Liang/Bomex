@@ -127,6 +127,7 @@ impl AutoTrader {
     }
 
     pub async fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Polling websocket");
         while let Some(message) = self.stream.as_mut().unwrap().next().await {
             let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
@@ -182,6 +183,7 @@ impl AutoTrader {
     }
 
     pub async fn cancel_all_orders_in_book(&self, product: &str) -> Result<(), reqwest::Error> {
+        println!("Cancelling all orders in book {}", product);
         send_order!(&crate::order::Order {
             username: &self.username,
             password: &self.password,
@@ -194,7 +196,7 @@ impl AutoTrader {
     }
 
     pub async fn shutdown(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.poll().await?;
+        println!("Shutting down");
         for id in self.books.keys() {
             self.cancel_all_orders_in_book(id).await?;
         }

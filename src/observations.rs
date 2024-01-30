@@ -72,6 +72,7 @@ pub enum Station {
     SydOlympicPark,
     CanberraAirport,
     CapeByron,
+    Index,
 }
 
 impl From<u64> for Station {
@@ -81,6 +82,7 @@ impl From<u64> for Station {
             66212 => Station::SydOlympicPark,
             70351 => Station::CanberraAirport,
             58216 => Station::CapeByron,
+            1 => Station::Index,
             _ => panic!("Unknown Station ID"),
         }
     }
