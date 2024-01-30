@@ -6,7 +6,6 @@ use crate::{
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
-use reqwest::Response;
 use serde_json::to_string;
 use std::collections::HashMap;
 use tokio::{net::TcpStream, spawn};
@@ -30,21 +29,19 @@ macro_rules! url {
 
 macro_rules! send_order {
     ($username:expr, $password:expr, $message:expr) => {
-        let form = reqwest::multipart::Form::new()
-            .text("username", to_string(&$username).unwrap())
-            .text("password", $password.clone())
-            .text("message", to_string(&$message).unwrap());
-        println!("{:#?}", form);
         let result = reqwest::Client::new()
             .post(url!(AutoTrader::EXECUTION_PORT, "execution"))
-            .multipart(form)
+            .form(&[
+                ("username", $username),
+                ("password", &$password.clone()),
+                ("message", &to_string(&$message).unwrap()),
+            ])
             .send()
             .await
             .unwrap()
             .text()
-            .await
-            .unwrap();
-        println!("{:?}", result);
+            .await;
+        println!("result: {:?}\n\n\n", result);
     };
 }
 
@@ -138,6 +135,38 @@ impl AutoTrader {
 
     pub async fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("Polling websocket");
+        for (product, book) in self.books.iter() {
+            let username = self.username.clone();
+            let password = self.password.clone();
+            let product = product.clone();
+            let (best_bid, best_ask) = book.bbo();
+            let volume = Volume(2);
+            let credit = 10;
+            send_order!(
+                "kliang",
+                password,
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: &product,
+                    price: best_bid.map_or(Price(1000), |price| price.price + credit),
+                    side: Side::Buy,
+                    volume,
+                    order_type: OrderType::Day,
+                }
+            );
+            send_order!(
+                "kliang",
+                password,
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: &product,
+                    price: best_ask.map_or(Price(5000), |price| price.price - credit),
+                    side: Side::Sell,
+                    volume,
+                    order_type: OrderType::Day,
+                }
+            );
+        }
         while let Some(message) = self.stream.as_mut().unwrap().next().await {
             let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
@@ -151,76 +180,12 @@ impl AutoTrader {
                     message.sequence()
                 );
             }
-            for (product, book) in self.books.iter() {
-                let username = self.username.clone();
-                let password = self.password.clone();
-                let product = product.clone();
-                let (best_bid, best_ask) = book.bbo();
-                spawn(async move {
-                    let credit = 10;
-                    let volume = Volume(2);
-                    send_order!(
-                        username,
-                        password,
-                        crate::order::Message::Add(AddMessage {
-                            message_type: MessageType::Add,
-                            product: &product,
-                            price: best_bid.map_or(Price(1000), |price| price.price + credit),
-                            side: Side::Buy,
-                            volume,
-                            order_type: OrderType::Day,
-                        })
-                    );
-                    send_order!(
-                        username,
-                        password,
-                        crate::order::Message::Add(AddMessage {
-                            message_type: MessageType::Add,
-                            product: &product,
-                            price: best_ask.map_or(Price(5000), |price| price.price - credit),
-                            side: Side::Sell,
-                            volume,
-                            order_type: OrderType::Day,
-                        })
-                    );
-                });
-            }
+            // for (product, book) in self.books.iter() {
+            //     spawn(async move {});
+            // }
         }
         Ok(())
     }
-
-    // #[allow(dead_code)]
-    // pub async fn cancel_order(
-    //     &self,
-    //     product: &str,
-    //     id: &str,
-    // ) -> Result<Response, Box<dyn std::error::Error>> {
-    //     Ok(send_order!(
-    //         self.username,
-    //         self.password,
-    //         crate::order::Message::Delete(DeleteMessage {
-    //             message_type: MessageType::Delete,
-    //             product,
-    //             id,
-    //         })
-    //     ))
-    // }
-
-    // #[allow(dead_code)]
-    // pub async fn cancel_all_orders_in_book(
-    //     &self,
-    //     product: &str,
-    // ) -> Result<Response, Box<dyn std::error::Error>> {
-    //     println!("Cancelling all orders in book {}", product);
-    //     Ok(send_order!(
-    //         self.username,
-    //         self.password,
-    //         crate::order::Message::BulkDelete(BulkDeleteMessage {
-    //             message_type: MessageType::BulkDelete,
-    //             product,
-    //         })
-    //     ))
-    // }
 }
 
 #[cfg(test)]

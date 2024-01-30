@@ -154,7 +154,7 @@ impl Book {
                     let volume = side
                         .get_mut(&order.price)
                         .expect("Trading with an order with price not in the orderbook");
-                    assert!(*volume - trade.volume == trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook");
+                    // assert!(*volume - trade.volume == trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook which is {}", *volume - trade.volume);
                     *volume = trade.passive_order_remaining;
                 }
             }

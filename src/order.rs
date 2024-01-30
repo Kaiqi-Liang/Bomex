@@ -1,22 +1,5 @@
-use crate::{
-    types::{Price, Side, Volume},
-    username::Username,
-};
+use crate::types::{Price, Side, Volume};
 use serde::Serialize;
-
-#[derive(Serialize)]
-pub struct Order<'a> {
-    pub username: &'a Username,
-    pub password: &'a str,
-    pub message: Message<'a>,
-}
-
-#[derive(Serialize)]
-pub enum Message<'a> {
-    Add(AddMessage<'a>),
-    Delete(DeleteMessage<'a>),
-    BulkDelete(BulkDeleteMessage<'a>),
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +14,7 @@ pub struct AddMessage<'a> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteMessage<'a> {
     #[serde(rename = "type")]
     pub message_type: MessageType,
@@ -39,6 +23,7 @@ pub struct DeleteMessage<'a> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BulkDeleteMessage<'a> {
     #[serde(rename = "type")]
     pub message_type: MessageType,
@@ -49,13 +34,16 @@ pub struct BulkDeleteMessage<'a> {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MessageType {
     Add,
+    #[allow(dead_code)]
     Delete,
+    #[allow(dead_code)]
     BulkDelete,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum OrderType {
     Day,
-    #[allow(dead_code)]
     Ioc,
 }

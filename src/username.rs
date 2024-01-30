@@ -50,4 +50,6 @@ pub enum Username {
     JBoon,
     MTiernan,
     ABarry,
+    JQuan,
+    EGoesman,
 }

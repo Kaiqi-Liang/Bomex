@@ -23,23 +23,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Server responded with headers: {:?}", response.headers());
     let (_, read) = stream.split();
 
-    let trader = Arc::new(tokio::sync::Mutex::new(AutoTrader::new(
+    let mut trader = AutoTrader::new(
         Username::KLiang,
         String::from("de7d8b078d63d5d9ad4e9df2f542eca6"),
         Some(read),
-    )));
+    );
 
     trader
-        .lock()
-        .await
         .startup()
         .await
         .expect("Failed to connect to the feed and recover from the latest snapshot");
 
-    println!(
-        "Started up with books: {:#?}",
-        trader.lock().await.books.keys(),
-    );
+    println!("Started up with books: {:#?}", trader.books.keys(),);
 
     let observations = Arc::new(std::sync::Mutex::new(HashMap::new()));
     let observations_clone = observations.clone();
@@ -51,8 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
-    println!("{observations:#?}");
 
-    trader.lock().await.poll().await?;
+    trader.poll().await?;
     Ok(())
 }
