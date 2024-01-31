@@ -106,6 +106,20 @@ impl Sub for Volume {
     }
 }
 
+impl Sub<Volume> for i16 {
+    type Output = i16;
+    fn sub(self, rhs: Volume) -> Self::Output {
+        self - to_underlying!(rhs) as i16
+    }
+}
+
+impl Add<Volume> for i16 {
+    type Output = i16;
+    fn add(self, rhs: Volume) -> Self::Output {
+        self + to_underlying!(rhs) as i16
+    }
+}
+
 impl AddAssign for Volume {
     fn add_assign(&mut self, rhs: Self) {
         to_underlying!(self) += to_underlying!(rhs);

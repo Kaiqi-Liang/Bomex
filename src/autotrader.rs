@@ -1,8 +1,5 @@
 use crate::{
-    arbitrage::find_arbs,
-    book::Book,
-    feed::{HasSequence, TradeMessage},
-    order::OrderAddedMessage,
+    arbitrage::find_arbs, book::Book, feed::HasSequence, order::OrderAddedMessage,
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
@@ -155,7 +152,7 @@ impl AutoTrader {
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let enables: Arc<Mutex<HashMap<String, bool>>> = Arc::new(Mutex::new(HashMap::new()));
-        let ready: Arc<Mutex<HashMap<String, Option<String>>>> =
+        let orders_to_wait: Arc<Mutex<HashMap<String, Option<String>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         while let Some(message) = stream.next().await {
             let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
@@ -163,18 +160,15 @@ impl AutoTrader {
             #[allow(clippy::comparison_chain)]
             if message.sequence() == next_sequence {
                 self.sequence = next_sequence;
-                match message {
-                    crate::feed::Message::Trade(ref trade) => {
-                        let mut ready = ready.lock().unwrap();
-                        if let Some(order_id) = ready.get(&trade.product).expect("") {
-                            if trade.aggressor_order == order_id.clone() {
-                                ready
-                                    .entry(trade.product.to_owned())
-                                    .and_modify(|ready| *ready = None);
-                            }
+                if let crate::feed::Message::Trade(ref trade) = message {
+                    let mut orders_to_wait = orders_to_wait.lock().unwrap();
+                    if let Some(order_id) = orders_to_wait.get(&trade.product).expect("") {
+                        if trade.aggressor_order == order_id.clone() {
+                            orders_to_wait
+                                .entry(trade.product.to_owned())
+                                .and_modify(|orders_to_wait| *orders_to_wait = None);
                         }
                     }
-                    _ => {}
                 }
                 self.parse_feed_message(message);
             } else if message.sequence() > next_sequence {
@@ -191,9 +185,9 @@ impl AutoTrader {
                 if !enables.contains_key(&book.product) {
                     enables.insert(book.product.clone(), true);
                 }
-                let mut ready = ready.lock().unwrap();
-                if !ready.contains_key(&book.product) {
-                    ready.insert(book.product.clone(), None);
+                let mut orders_to_wait = orders_to_wait.lock().unwrap();
+                if !orders_to_wait.contains_key(&book.product) {
+                    orders_to_wait.insert(book.product.clone(), None);
                 }
                 let entry = indices.entry(book.expiry.clone()).or_insert([&book; 4]);
                 entry[book.station_id as usize] = book;
@@ -205,18 +199,29 @@ impl AutoTrader {
                         .unwrap()
                         .get(&book.product)
                         .expect("Book does not exist")
-                        && ready
+                        && orders_to_wait
                             .lock()
                             .unwrap()
                             .get(&book.product)
                             .expect("Book does not exist")
                             .is_none()
                 }) {
-                    for order in find_arbs(index, enables.clone()) {
+                    let orders = find_arbs(index);
+                    for order in orders.iter() {
+                        let position = self.books.get(&order.product).expect("").position.position;
+                        if position > 0 && position + order.volume > 1000
+                            || position < 0 && position - order.volume < -1000
+                        {
+                            if let Some(enable) = enables.lock().unwrap().get_mut(&order.product) {
+                                *enable = false;
+                            }
+                        }
+                    }
+                    for order in orders {
                         let username = self.username.clone();
                         let password = self.password.clone();
                         let enables = enables.clone();
-                        let ready = ready.clone();
+                        let orders_to_wait = orders_to_wait.clone();
                         spawn(async move {
                             *enables.lock().unwrap().get_mut(&order.product).expect("") = false;
                             let result = send_order!(
@@ -237,7 +242,7 @@ impl AutoTrader {
                                             "For IOC orders there should be no resting volume"
                                         );
                                         if response.filled_volume != 0 {
-                                            *ready
+                                            *orders_to_wait
                                                 .lock()
                                                 .unwrap()
                                                 .get_mut(&order.product)

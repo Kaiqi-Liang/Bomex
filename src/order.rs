@@ -20,10 +20,13 @@ pub struct AddMessage {
 #[serde(rename_all = "camelCase")]
 pub struct OrderAddedMessage {
     pub order_id: String,
+    #[allow(unused)]
     side: Side,
+    #[allow(unused)]
     price: Price,
     pub filled_volume: Volume,
     pub resting_volume: Volume,
+    #[allow(unused)]
     owner: Username,
 }
 
