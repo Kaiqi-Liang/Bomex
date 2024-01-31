@@ -6,18 +6,10 @@ use crate::{
 };
 use std::cmp::Ordering;
 
+#[derive(Default)]
 struct IndexTheo {
     theo: PriceLevel,
     index: PriceLevel,
-}
-
-impl IndexTheo {
-    fn new() -> Self {
-        Self {
-            theo: PriceLevel::default(),
-            index: PriceLevel::default(),
-        }
-    }
 }
 
 #[derive(PartialEq)]
@@ -33,7 +25,7 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
     let mut underlying_price = [Price::default(); 3];
     let mut index_price = Price::default();
     let mut underlying_volume = Volume::default();
-    let mut index_theo = IndexTheo::new();
+    let mut index_theo = IndexTheo::default();
     let mut book_iters = index.map(|book| {
         let iter: Box<dyn Iterator<Item = (&Price, &Volume)>> =
             if strategy == Strategy::BuyUnderlyingSellIndex && book.station_id == Station::Index

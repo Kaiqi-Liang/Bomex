@@ -1,5 +1,4 @@
 use crate::{
-    autotrader::State,
     feed::{AddedMessage, DeletedMessage, TradeMessage, TradeType},
     observations::Station,
     types::{Price, Side, Volume},
@@ -37,9 +36,10 @@ impl From<AddedMessage> for Order {
 
 #[derive(Default, Debug, PartialEq)]
 pub struct Position {
-    pub bid_exposure: Volume, // open bid exposure in the market
-    pub ask_exposure: Volume, // open ask exposure in the market
-    pub position: i16, // current traded position in the book. If the book is active, this is their 'current position'. If the book has settled, then this is was the user's position as settlement time.
+    pub bid_exposure: Volume,
+    pub ask_exposure: Volume,
+    /// current traded position in the book, positive for long negative for short
+    pub position: i16,
 }
 
 macro_rules! get_side_and_exposure {
@@ -105,8 +105,8 @@ impl Book {
             .orders
             .remove(&deleted.id)
             .expect("Deleting an order with unknown ID");
-        let (side, exposure) = get_side_and_exposure!(self, deleted.side);
 
+        let (side, exposure) = get_side_and_exposure!(self, deleted.side);
         if order.owner == *username {
             *exposure -= order.volume;
         }
@@ -120,7 +120,7 @@ impl Book {
         }
     }
 
-    pub fn trade(&mut self, trade: TradeMessage, username: &Username, state: State) {
+    pub fn trade(&mut self, trade: TradeMessage, username: &Username) {
         if trade.buyer == *username || trade.seller == *username {
             if trade.buyer == *username {
                 self.position.position += trade.volume;
@@ -129,14 +129,10 @@ impl Book {
                 self.position.position -= trade.volume;
             }
         }
-        if state == State::Feed {
-            // Don't touch the order book during recovery
-            let order = self
-                .orders
-                .get_mut(&trade.passive_order)
-                .expect("Trading with an order with unknown ID");
-            assert!(order.volume - trade.volume == trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook");
-            assert!(order.price == trade.price, "Passive order in the trade message has different price than the order in the orderbook");
+        if let Some(order) = self.orders.get_mut(&trade.passive_order) {
+            assert_eq!(order.volume - trade.volume, trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook");
+            assert_eq!(order.price, trade.price, "Passive order in the trade message has different price than the order in the orderbook");
+
             if trade.trade_type != TradeType::BrokerTrade {
                 let side = if trade.trade_type == TradeType::BuyAggressor {
                     Side::Sell
@@ -160,9 +156,10 @@ impl Book {
                     if order.owner == *username {
                         *exposure -= trade.volume;
                     }
+
                     let volume = side
                         .get_mut(&order.price)
-                        .expect("Trading with an order with price not in the orderbook");
+                        .expect("Executing an order with a price not in the orderbook");
                     *volume -= trade.volume;
                 }
             }

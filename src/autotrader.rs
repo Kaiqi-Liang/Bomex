@@ -53,12 +53,6 @@ macro_rules! get_book {
     };
 }
 
-#[derive(PartialEq)]
-pub enum State {
-    Recovery,
-    Feed,
-}
-
 pub struct AutoTrader {
     pub username: Username,
     pub password: String,
@@ -98,7 +92,7 @@ impl AutoTrader {
                 .await?;
         for message in messages {
             self.sequence = message.sequence();
-            self.parse_feed_message(message, State::Recovery);
+            self.parse_feed_message(message);
         }
         println!(
             "Finished recovery with following active books: {:#?}",
@@ -115,7 +109,7 @@ impl AutoTrader {
     }
 
     /// Outbound decoder for feed
-    fn parse_feed_message(&mut self, message: crate::feed::Message, state: State) {
+    fn parse_feed_message(&mut self, message: crate::feed::Message) {
         #[cfg(debug_assertions)]
         dbg!(&message);
         match message {
@@ -136,7 +130,7 @@ impl AutoTrader {
                 get_book!(self.books, deleted).remove_order(deleted, &self.username);
             }
             crate::feed::Message::Trade(trade) => {
-                get_book!(self.books, trade).trade(trade, &self.username, state);
+                get_book!(self.books, trade).trade(trade, &self.username);
             }
             crate::feed::Message::Settlement(settlement) => {
                 println!(
@@ -163,7 +157,7 @@ impl AutoTrader {
             #[allow(clippy::comparison_chain)]
             if message.sequence() == next_sequence {
                 self.sequence = next_sequence;
-                self.parse_feed_message(message, State::Feed);
+                self.parse_feed_message(message);
             } else if message.sequence() > next_sequence {
                 panic!(
                     "Expecting sequence number {} but got {}",
@@ -227,10 +221,9 @@ mod tests {
     static EXPIRY: &str = "2024-01-04 09:50+1100";
 
     macro_rules! parse_json {
-        ($trader:ident, $state:expr, $json:tt) => {
+        ($trader:ident, $json:tt) => {
             $trader.parse_feed_message(
                 from_value(json!($json)).expect("Failed to parse feed message"),
-                $state,
             );
         };
     }
@@ -240,7 +233,7 @@ mod tests {
         let mut trader = AutoTrader::new(Username::KLiang, String::new());
         assert_eq!(trader.books, HashMap::new());
 
-        parse_json!(trader, State::Recovery, {
+        parse_json!(trader, {
             "type": "FUTURE",
             "product": PRODUCT,
             "stationId": 66212,
@@ -258,79 +251,282 @@ mod tests {
             "sequence": 1,
         });
 
-        parse_json!(trader, State::Recovery, {
-            "type": "TRADE",
-            "product": PRODUCT,
-            "price": 28.90,
-            "volume": 2,
-            "buyer": "kliang",
-            "seller": "kliang",
-            "tradeType": "SELL_AGGRESSOR",
-            "passiveOrder": "6",
-            "passiveOrderRemaining": 3,
-            "aggressorOrder": "10",
-            "sequence": 12
-        });
-
-        parse_json!(trader, State::Recovery, {
-            "type": "ADDED",
-            "product": PRODUCT,
-            "id": "1",
-            "side": "BUY",
-            "price": 24.31,
-            "filled": 0,
-            "resting": 20,
-            "owner": "kliang",
-            "sequence": 2
-        });
-
-        parse_json!(trader, State::Recovery, {
-            "type": "TRADE",
-            "product": PRODUCT,
-            "price": 28.90,
-            "volume": 2,
-            "buyer": "kliang",
-            "seller": "kliang",
-            "tradeType": "SELL_AGGRESSOR",
-            "passiveOrder": "6",
-            "passiveOrderRemaining": 3,
-            "aggressorOrder": "10",
-            "sequence": 12
-        });
-
-        assert_eq!(
-            trader
-                .books
-                .get(PRODUCT)
-                .expect("Book does not exist")
-                .bbo(),
-            (
-                Some(PriceLevel {
-                    price: Price(2431),
-                    volume: Volume(20),
-                }),
-                None
-            ),
-        );
         assert_eq!(
             trader.books,
             HashMap::from([(
                 PRODUCT.to_string(),
                 Book {
-                    bids: BTreeMap::from([(Price(2431), Volume(20))]),
+                    bids: BTreeMap::new(),
                     asks: BTreeMap::new(),
+                    orders: HashMap::new(),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(0),
+                        position: 0,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 18.98,
+            "volume": 65,
+            "buyer": "kliang",
+            "seller": "prao",
+            "tradeType": "BUY_AGGRESSOR",
+            "passiveOrder": "1",
+            "passiveOrderRemaining": 30,
+            "aggressorOrder": "2",
+            "sequence": 2
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::new(),
+                    orders: HashMap::new(),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(0),
+                        position: 65,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 18.98,
+            "volume": 30,
+            "buyer": "kliang",
+            "seller": "prao",
+            "tradeType": "BUY_AGGRESSOR",
+            "passiveOrder": "1",
+            "passiveOrderRemaining": 0,
+            "aggressorOrder": "3",
+            "sequence": 3
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::new(),
+                    orders: HashMap::new(),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(0),
+                        position: 95,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 28.90,
+            "volume": 2,
+            "buyer": "kliang",
+            "seller": "kliang",
+            "tradeType": "SELL_AGGRESSOR",
+            "passiveOrder": "4",
+            "passiveOrderRemaining": 3,
+            "aggressorOrder": "5",
+            "sequence": 4
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::new(),
+                    orders: HashMap::new(),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(0),
+                        position: 95,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, {
+            "type": "ADDED",
+            "product": PRODUCT,
+            "id": "6",
+            "side": "SELL",
+            "price": 17.16,
+            "filled": 0,
+            "resting": 75,
+            "owner": "kliang",
+            "sequence": 5
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::from([(Price(1716), Volume(75))]),
                     orders: HashMap::from([(
-                        String::from("1"),
+                        String::from("6"),
                         Order {
-                            price: Price(2431),
                             owner: Username::KLiang,
-                            volume: Volume(20),
+                            price: Price(1716),
+                            volume: Volume(75),
+                        },
+                    )]),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(75),
+                        position: 95,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 17.16,
+            "volume": 10,
+            "buyer": "ssrzich",
+            "seller": "kliang",
+            "tradeType": "BUY_AGGRESSOR",
+            "passiveOrder": "6",
+            "passiveOrderRemaining": 65,
+            "aggressorOrder": "7",
+            "sequence": 6
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::from([(Price(1716), Volume(65))]),
+                    orders: HashMap::from([(
+                        String::from("6"),
+                        Order {
+                            owner: Username::KLiang,
+                            price: Price(1716),
+                            volume: Volume(65),
+                        },
+                    )]),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(65),
+                        position: 85,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 16.02,
+            "volume": 23,
+            "buyer": "kliang",
+            "seller": "prao",
+            "tradeType": "BUY_AGGRESSOR",
+            "passiveOrder": "8",
+            "passiveOrderRemaining": 72,
+            "aggressorOrder": "9",
+            "sequence": 7
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::from([(Price(1716), Volume(65))]),
+                    orders: HashMap::from([(
+                        String::from("6"),
+                        Order {
+                            owner: Username::KLiang,
+                            price: Price(1716),
+                            volume: Volume(65),
                         }
                     )]),
                     position: Position {
-                        bid_exposure: Volume(20),
-                        ask_exposure: Volume(0),
-                        position: 0,
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(65),
+                        position: 108,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 17.16,
+            "volume": 10,
+            "buyer": "ssrzich",
+            "seller": "kliang",
+            "tradeType": "BUY_AGGRESSOR",
+            "passiveOrder": "6",
+            "passiveOrderRemaining": 55,
+            "aggressorOrder": "10",
+            "sequence": 8
+        });
+
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::from([(Price(1716), Volume(55))]),
+                    orders: HashMap::from([(
+                        String::from("6"),
+                        Order {
+                            owner: Username::KLiang,
+                            price: Price(1716),
+                            volume: Volume(55),
+                        }
+                    )]),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(55),
+                        position: 98,
                     },
                     product: PRODUCT.to_string(),
                     station_id: Station::SydOlympicPark,
@@ -345,7 +541,7 @@ mod tests {
         let mut trader = AutoTrader::new(Username::KLiang, String::new());
         assert_eq!(trader.books, HashMap::new());
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "FUTURE",
             "product": PRODUCT,
             "stationId": 66212,
@@ -363,7 +559,35 @@ mod tests {
             "sequence": 1,
         });
 
-        parse_json!(trader, State::Feed, {
+        assert_eq!(
+            trader
+                .books
+                .get(PRODUCT)
+                .expect("Book does not exist")
+                .bbo(),
+            (None, None),
+        );
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::new(),
+                    orders: HashMap::new(),
+                    position: Position {
+                        bid_exposure: Volume(0),
+                        ask_exposure: Volume(0),
+                        position: 0,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, {
             "type": "ADDED",
             "product": PRODUCT,
             "id": "1",
@@ -386,7 +610,7 @@ mod tests {
                     price: Price(2431),
                     volume: Volume(20),
                 }),
-                None
+                None,
             ),
         );
         assert_eq!(
@@ -416,7 +640,7 @@ mod tests {
             )]),
         );
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "ADDED",
             "product": PRODUCT,
             "id": "2",
@@ -428,7 +652,7 @@ mod tests {
             "sequence": 3
         });
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "ADDED",
             "product": PRODUCT,
             "id": "3",
@@ -440,7 +664,7 @@ mod tests {
             "sequence": 4
         });
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "ADDED",
             "product": PRODUCT,
             "id": "4",
@@ -522,7 +746,7 @@ mod tests {
             )]),
         );
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "DELETED",
             "product": PRODUCT,
             "id": "1",
@@ -592,7 +816,7 @@ mod tests {
             )]),
         );
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "ADDED",
             "product": PRODUCT,
             "id": "5",
@@ -604,7 +828,7 @@ mod tests {
             "sequence": 7
         });
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "ADDED",
             "product": PRODUCT,
             "id": "6",
@@ -616,7 +840,7 @@ mod tests {
             "sequence": 8
         });
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "ADDED",
             "product": PRODUCT,
             "id": "7",
@@ -722,7 +946,7 @@ mod tests {
             )]),
         );
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "TRADE",
             "product": PRODUCT,
             "price": 30.01,
@@ -819,7 +1043,7 @@ mod tests {
         );
 
         // wash trade
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "TRADE",
             "product": PRODUCT,
             "price": 29.99,
@@ -834,7 +1058,7 @@ mod tests {
         });
 
         // leftover volume on orderbook
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "TRADE",
             "product": PRODUCT,
             "price": 28.90,
@@ -919,7 +1143,7 @@ mod tests {
         );
 
         // Add to the same level as part of the best ask
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "ADDED",
             "product": PRODUCT,
             "id": "10",
@@ -1009,7 +1233,7 @@ mod tests {
             )]),
         );
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "TRADE",
             "product": PRODUCT,
             "price": 31.01,
@@ -1101,7 +1325,7 @@ mod tests {
             )]),
         );
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "TRADE",
             "product": PRODUCT,
             "price": 31.01,
@@ -1111,8 +1335,8 @@ mod tests {
             "tradeType": "BUY_AGGRESSOR",
             "passiveOrder": "10",
             "passiveOrderRemaining": 0,
-            "aggressorOrder": "11",
-            "sequence": 14
+            "aggressorOrder": "12",
+            "sequence": 15
         });
 
         assert_eq!(
@@ -1185,7 +1409,7 @@ mod tests {
             )]),
         );
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "TRADE",
             "product": PRODUCT,
             "price": 31.01,
@@ -1195,8 +1419,8 @@ mod tests {
             "tradeType": "BUY_AGGRESSOR",
             "passiveOrder": "4",
             "passiveOrderRemaining": 48,
-            "aggressorOrder": "11",
-            "sequence": 15
+            "aggressorOrder": "12",
+            "sequence": 16
         });
 
         assert_eq!(
@@ -1269,19 +1493,19 @@ mod tests {
             )]),
         );
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "TRADING_HALT",
             "product": PRODUCT,
-            "sequence": 16
+            "sequence": 17
         });
 
-        parse_json!(trader, State::Feed, {
+        parse_json!(trader, {
             "type": "SETTLEMENT",
             "product": PRODUCT,
             "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
             "expiry": EXPIRY,
             "price": 26.05,
-            "sequence": 17
+            "sequence": 18
         });
 
         assert_eq!(trader.books, HashMap::new());
