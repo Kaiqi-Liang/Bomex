@@ -94,8 +94,7 @@ pub enum TradeType {
 pub struct SettlementMessage {
     pub product: String,
     pub station_name: String,
-    #[allow(unused)]
-    expiry: String,
+    pub expiry: String,
     pub price: Price,
     pub sequence: u32,
 }

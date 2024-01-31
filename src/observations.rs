@@ -52,7 +52,7 @@ pub fn poll_observations() {
         loop {
             let result = get_latest_observations(observations_clone.clone()).await;
             if result.is_err() {
-                println!("{result:#?}");
+                dbg!(result);
             }
         }
     });

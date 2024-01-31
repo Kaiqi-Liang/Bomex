@@ -155,17 +155,15 @@ impl Book {
                     );
                 } else {
                     let (side, exposure) = get_side_and_exposure!(self, side);
-                    order.volume = trade.passive_order_remaining;
+                    order.volume -= trade.volume;
 
                     if order.owner == *username {
                         *exposure -= trade.volume;
                     }
-
                     let volume = side
                         .get_mut(&order.price)
                         .expect("Trading with an order with price not in the orderbook");
-                    assert!(*volume - trade.volume == trade.passive_order_remaining, "Remaining passive order in the trade message is not equal to the remaining order in the orderbook which is {:?}", *volume - trade.volume);
-                    *volume = trade.passive_order_remaining;
+                    *volume -= trade.volume;
                 }
             }
         }

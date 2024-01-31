@@ -106,11 +106,7 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
             }
         }
     }
-    assert_eq!(
-        index_volume, underlying_volume,
-        "Arbs must have the same volume",
-    );
-    if index_volume != 0 {
+    if index_volume != 0 && index_volume == underlying_volume {
         for (i, price) in underlying_price.into_iter().enumerate() {
             let book = index.get(i).expect("Book does not exist");
             orders.push(AddMessage {

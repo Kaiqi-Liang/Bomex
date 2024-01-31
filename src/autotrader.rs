@@ -38,8 +38,9 @@ macro_rules! send_order {
             ])
             .send()
             .await;
-        if result.is_err() {
-            println!("{result:#?}");
+        match result {
+            Ok(response) => println!("{:?}", response.text().await),
+            Err(err) => println!("{}", err),
         }
     };
 }
@@ -90,13 +91,6 @@ impl AutoTrader {
     }
 
     pub async fn startup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let (stream, response) =
-            connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
-                .await
-                .expect("Failed to connect to the websocket");
-        println!("Server responded with headers: {:?}", response.headers());
-        let (_, read) = stream.split();
-
         let messages: Vec<crate::feed::Message> =
             reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
                 .await?
@@ -107,16 +101,23 @@ impl AutoTrader {
             self.parse_feed_message(message, State::Recovery);
         }
         println!(
-            "Finished recovery with following books: {:#?}",
+            "Finished recovery with following active books: {:#?}",
             self.books.keys(),
         );
-        self.poll(read).await?;
+
+        let (stream, response) =
+            connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
+                .await
+                .expect("Failed to connect to the websocket");
+        println!("Server responded with headers: {:?}", response.headers());
+        self.poll(stream.split().1).await?;
         Ok(())
     }
 
     /// Outbound decoder for feed
     fn parse_feed_message(&mut self, message: crate::feed::Message, state: State) {
-        // println!("{:#?}", message);
+        #[cfg(debug_assertions)]
+        dbg!(&message);
         match message {
             crate::feed::Message::Future(future) => {
                 assert_eq!(
@@ -156,7 +157,6 @@ impl AutoTrader {
         &mut self,
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Polling websocket");
         while let Some(message) = stream.next().await {
             let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
@@ -237,7 +237,6 @@ mod tests {
 
     #[test]
     fn test_recovery() {
-        // TODO: fix this test
         let mut trader = AutoTrader::new(Username::KLiang, String::new());
         assert_eq!(trader.books, HashMap::new());
 
@@ -845,7 +844,7 @@ mod tests {
             "tradeType": "SELL_AGGRESSOR",
             "passiveOrder": "6",
             "passiveOrderRemaining": 3,
-            "aggressorOrder": "10",
+            "aggressorOrder": "9",
             "sequence": 12
         });
 
@@ -919,10 +918,361 @@ mod tests {
             )]),
         );
 
+        // Add to the same level as part of the best ask
+        parse_json!(trader, State::Feed, {
+            "type": "ADDED",
+            "product": PRODUCT,
+            "id": "10",
+            "side": "SELL",
+            "price": 31.01,
+            "filled": 0,
+            "resting": 2,
+            "owner": "kliang",
+            "sequence": 13
+        });
+
+        assert_eq!(
+            trader
+                .books
+                .get(PRODUCT)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2890),
+                    volume: Volume(3),
+                }),
+                Some(PriceLevel {
+                    price: Price(3101),
+                    volume: Volume(52),
+                }),
+            ),
+        );
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::from([(Price(2431), Volume(15)), (Price(2890), Volume(3))]),
+                    asks: BTreeMap::from([(Price(3329), Volume(20)), (Price(3101), Volume(52))]),
+                    orders: HashMap::from([
+                        (
+                            String::from("2"),
+                            Order {
+                                price: Price(2431),
+                                owner: Username::CChuah,
+                                volume: Volume(15),
+                            },
+                        ),
+                        (
+                            String::from("3"),
+                            Order {
+                                price: Price(3329),
+                                owner: Username::CChuah,
+                                volume: Volume(20),
+                            },
+                        ),
+                        (
+                            String::from("4"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::RCurby,
+                                volume: Volume(50),
+                            },
+                        ),
+                        (
+                            String::from("6"),
+                            Order {
+                                price: Price(2890),
+                                owner: Username::KLiang,
+                                volume: Volume(3),
+                            },
+                        ),
+                        (
+                            String::from("10"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::KLiang,
+                                volume: Volume(2),
+                            },
+                        ),
+                    ]),
+                    position: Position {
+                        bid_exposure: Volume(3),
+                        ask_exposure: Volume(2),
+                        position: -1,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, State::Feed, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 31.01,
+            "volume": 1,
+            "buyer": "cluo",
+            "seller": "kliang",
+            "tradeType": "BUY_AGGRESSOR",
+            "passiveOrder": "10",
+            "passiveOrderRemaining": 1,
+            "aggressorOrder": "11",
+            "sequence": 14
+        });
+
+        assert_eq!(
+            trader
+                .books
+                .get(PRODUCT)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2890),
+                    volume: Volume(3),
+                }),
+                Some(PriceLevel {
+                    price: Price(3101),
+                    volume: Volume(51),
+                }),
+            ),
+        );
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::from([(Price(2431), Volume(15)), (Price(2890), Volume(3))]),
+                    asks: BTreeMap::from([(Price(3329), Volume(20)), (Price(3101), Volume(51))]),
+                    orders: HashMap::from([
+                        (
+                            String::from("2"),
+                            Order {
+                                price: Price(2431),
+                                owner: Username::CChuah,
+                                volume: Volume(15),
+                            },
+                        ),
+                        (
+                            String::from("3"),
+                            Order {
+                                price: Price(3329),
+                                owner: Username::CChuah,
+                                volume: Volume(20),
+                            },
+                        ),
+                        (
+                            String::from("4"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::RCurby,
+                                volume: Volume(50),
+                            },
+                        ),
+                        (
+                            String::from("6"),
+                            Order {
+                                price: Price(2890),
+                                owner: Username::KLiang,
+                                volume: Volume(3),
+                            },
+                        ),
+                        (
+                            String::from("10"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::KLiang,
+                                volume: Volume(1),
+                            },
+                        ),
+                    ]),
+                    position: Position {
+                        bid_exposure: Volume(3),
+                        ask_exposure: Volume(1),
+                        position: -2,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, State::Feed, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 31.01,
+            "volume": 1,
+            "buyer": "slee2",
+            "seller": "kliang",
+            "tradeType": "BUY_AGGRESSOR",
+            "passiveOrder": "10",
+            "passiveOrderRemaining": 0,
+            "aggressorOrder": "11",
+            "sequence": 14
+        });
+
+        assert_eq!(
+            trader
+                .books
+                .get(PRODUCT)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2890),
+                    volume: Volume(3),
+                }),
+                Some(PriceLevel {
+                    price: Price(3101),
+                    volume: Volume(50),
+                }),
+            ),
+        );
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::from([(Price(2431), Volume(15)), (Price(2890), Volume(3))]),
+                    asks: BTreeMap::from([(Price(3329), Volume(20)), (Price(3101), Volume(50))]),
+                    orders: HashMap::from([
+                        (
+                            String::from("2"),
+                            Order {
+                                price: Price(2431),
+                                owner: Username::CChuah,
+                                volume: Volume(15),
+                            },
+                        ),
+                        (
+                            String::from("3"),
+                            Order {
+                                price: Price(3329),
+                                owner: Username::CChuah,
+                                volume: Volume(20),
+                            },
+                        ),
+                        (
+                            String::from("4"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::RCurby,
+                                volume: Volume(50),
+                            },
+                        ),
+                        (
+                            String::from("6"),
+                            Order {
+                                price: Price(2890),
+                                owner: Username::KLiang,
+                                volume: Volume(3),
+                            },
+                        ),
+                    ]),
+                    position: Position {
+                        bid_exposure: Volume(3),
+                        ask_exposure: Volume(0),
+                        position: -3,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
+        parse_json!(trader, State::Feed, {
+            "type": "TRADE",
+            "product": PRODUCT,
+            "price": 31.01,
+            "volume": 2,
+            "buyer": "slee2",
+            "seller": "rcurby",
+            "tradeType": "BUY_AGGRESSOR",
+            "passiveOrder": "4",
+            "passiveOrderRemaining": 48,
+            "aggressorOrder": "11",
+            "sequence": 15
+        });
+
+        assert_eq!(
+            trader
+                .books
+                .get(PRODUCT)
+                .expect("Book does not exist")
+                .bbo(),
+            (
+                Some(PriceLevel {
+                    price: Price(2890),
+                    volume: Volume(3),
+                }),
+                Some(PriceLevel {
+                    price: Price(3101),
+                    volume: Volume(48),
+                }),
+            ),
+        );
+        assert_eq!(
+            trader.books,
+            HashMap::from([(
+                PRODUCT.to_string(),
+                Book {
+                    bids: BTreeMap::from([(Price(2431), Volume(15)), (Price(2890), Volume(3))]),
+                    asks: BTreeMap::from([(Price(3329), Volume(20)), (Price(3101), Volume(48))]),
+                    orders: HashMap::from([
+                        (
+                            String::from("2"),
+                            Order {
+                                price: Price(2431),
+                                owner: Username::CChuah,
+                                volume: Volume(15),
+                            },
+                        ),
+                        (
+                            String::from("3"),
+                            Order {
+                                price: Price(3329),
+                                owner: Username::CChuah,
+                                volume: Volume(20),
+                            },
+                        ),
+                        (
+                            String::from("4"),
+                            Order {
+                                price: Price(3101),
+                                owner: Username::RCurby,
+                                volume: Volume(48),
+                            },
+                        ),
+                        (
+                            String::from("6"),
+                            Order {
+                                price: Price(2890),
+                                owner: Username::KLiang,
+                                volume: Volume(3),
+                            },
+                        ),
+                    ]),
+                    position: Position {
+                        bid_exposure: Volume(3),
+                        ask_exposure: Volume(0),
+                        position: -3,
+                    },
+                    product: PRODUCT.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            )]),
+        );
+
         parse_json!(trader, State::Feed, {
             "type": "TRADING_HALT",
             "product": PRODUCT,
-            "sequence": 13
+            "sequence": 16
         });
 
         parse_json!(trader, State::Feed, {
@@ -931,7 +1281,7 @@ mod tests {
             "stationName": "SYDNEY OLYMPIC PARK AWS (ARCHERY CENTRE)",
             "expiry": EXPIRY,
             "price": 26.05,
-            "sequence": 14
+            "sequence": 17
         });
 
         assert_eq!(trader.books, HashMap::new());
