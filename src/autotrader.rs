@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::{net::TcpStream, spawn};
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
 #[macro_export]
 macro_rules! url {
@@ -30,8 +30,11 @@ macro_rules! send_order {
             .post(url!(AutoTrader::EXECUTION_PORT, "execution"))
             .form(&[
                 ("username", $username),
-                ("password", &$password.clone()),
-                ("message", &to_string(&$message).unwrap()),
+                ("password", &$password),
+                (
+                    "message",
+                    &to_string(&$message).expect("Serialization of AddMessage should not fail"),
+                ),
             ])
             .send()
             .await;
@@ -55,14 +58,11 @@ pub enum State {
     Feed,
 }
 
-type Websocket = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
-
 pub struct AutoTrader {
     pub username: Username,
     pub password: String,
     pub books: HashMap<String, Book>,
     pub sequence: u32,
-    pub stream: Option<Websocket>,
 }
 
 pub trait ConstantPorts {
@@ -80,17 +80,23 @@ impl ConstantPorts for AutoTrader {
 }
 
 impl AutoTrader {
-    pub fn new(username: Username, password: String, stream: Option<Websocket>) -> AutoTrader {
+    pub fn new(username: Username, password: String) -> AutoTrader {
         AutoTrader {
             username,
             password,
             books: HashMap::new(),
             sequence: 0,
-            stream,
         }
     }
 
     pub async fn startup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, response) =
+            connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
+                .await
+                .expect("Failed to connect to the websocket");
+        println!("Server responded with headers: {:?}", response.headers());
+        let (_, read) = stream.split();
+
         let messages: Vec<crate::feed::Message> =
             reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
                 .await?
@@ -104,7 +110,7 @@ impl AutoTrader {
             "Finished recovery with following books: {:#?}",
             self.books.keys(),
         );
-        self.poll().await?;
+        self.poll(read).await?;
         Ok(())
     }
 
@@ -146,9 +152,12 @@ impl AutoTrader {
         }
     }
 
-    pub async fn poll(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn poll(
+        &mut self,
+        mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         println!("Polling websocket");
-        while let Some(message) = self.stream.as_mut().unwrap().next().await {
+        while let Some(message) = stream.next().await {
             let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
             #[allow(clippy::comparison_chain)]
@@ -163,7 +172,6 @@ impl AutoTrader {
                 );
             }
 
-            // TODO: let username = self.username.clone();
             let mut indices: HashMap<String, [&Book; 4]> = HashMap::new();
             let enables: Arc<Mutex<HashMap<String, bool>>> = Arc::new(Mutex::new(HashMap::new()));
             for book in self.books.values() {
@@ -175,15 +183,25 @@ impl AutoTrader {
                 entry[book.station_id as usize] = book;
             }
             for index in indices.values() {
-                if index
-                    .iter()
-                    .all(|book| *enables.lock().unwrap().get(&book.product).unwrap())
-                {
+                if index.iter().all(|book| {
+                    *enables
+                        .lock()
+                        .unwrap()
+                        .get(&book.product)
+                        .expect("Book does not exist")
+                }) {
                     for order in find_arbs(index) {
+                        let username = self.username.clone();
                         let password = self.password.clone();
                         let enables = enables.clone();
                         spawn(async move {
-                            send_order!("kliang", password, order);
+                            send_order!(
+                                to_string(&username)
+                                    .expect("Failed to conert username to string")
+                                    .trim_matches('"'),
+                                password,
+                                order
+                            );
                             *enables.lock().unwrap().get_mut(&order.product).expect("") = false;
                         });
                     }
@@ -220,7 +238,7 @@ mod tests {
     #[test]
     fn test_recovery() {
         // TODO: fix this test
-        let mut trader = AutoTrader::new(Username::KLiang, String::new(), None);
+        let mut trader = AutoTrader::new(Username::KLiang, String::new());
         assert_eq!(trader.books, HashMap::new());
 
         parse_json!(trader, State::Recovery, {
@@ -325,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_feed() {
-        let mut trader = AutoTrader::new(Username::KLiang, String::new(), None);
+        let mut trader = AutoTrader::new(Username::KLiang, String::new());
         assert_eq!(trader.books, HashMap::new());
 
         parse_json!(trader, State::Feed, {

@@ -35,20 +35,14 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
     let mut underlying_volume = Volume::default();
     let mut index_theo = IndexTheo::new();
     let mut book_iters = index.map(|book| {
-        let iter: Box<dyn Iterator<Item = (&Price, &Volume)>> = if book.station_id == Station::Index
-        {
-            if strategy == Strategy::BuyUnderlyingSellIndex {
+        let iter: Box<dyn Iterator<Item = (&Price, &Volume)>> =
+            if strategy == Strategy::BuyUnderlyingSellIndex && book.station_id == Station::Index
+                || strategy == Strategy::BuyIndexSellUnderlying && book.station_id != Station::Index
+            {
                 Box::new(book.bids.iter().rev())
             } else {
                 Box::new(book.asks.iter())
-            }
-        } else {
-            if strategy == Strategy::BuyUnderlyingSellIndex {
-                Box::new(book.asks.iter())
-            } else {
-                Box::new(book.bids.iter().rev())
-            }
-        };
+            };
         iter
     });
     'outer: loop {

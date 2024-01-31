@@ -45,7 +45,21 @@ impl PartialEq for Observation {
 impl Eq for Observation {}
 
 #[allow(unused)]
-pub async fn refresh_latest_observations(
+pub fn poll_observations() {
+    let observations = Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let observations_clone = observations.clone();
+    tokio::spawn(async move {
+        loop {
+            let result = get_latest_observations(observations_clone.clone()).await;
+            if result.is_err() {
+                println!("{result:#?}");
+            }
+        }
+    });
+    println!("{observations:#?}");
+}
+
+async fn get_latest_observations(
     observations: Arc<Mutex<HashMap<Station, BTreeSet<Observation>>>>,
 ) -> Result<(), reqwest::Error> {
     let response: Vec<Observation> = reqwest::get(url!(AutoTrader::OBSERVATION_PORT, "current"))
