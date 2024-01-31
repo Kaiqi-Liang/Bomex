@@ -85,6 +85,12 @@ impl AutoTrader {
     }
 
     pub async fn startup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let (stream, response) =
+            connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
+                .await
+                .expect("Failed to connect to the websocket");
+        println!("Server responded with headers: {:?}", response.headers());
+
         let messages: Vec<crate::feed::Message> =
             reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
                 .await?
@@ -99,11 +105,6 @@ impl AutoTrader {
             self.books.keys(),
         );
 
-        let (stream, response) =
-            connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
-                .await
-                .expect("Failed to connect to the websocket");
-        println!("Server responded with headers: {:?}", response.headers());
         self.poll(stream.split().1).await?;
         Ok(())
     }
