@@ -229,17 +229,20 @@ impl AutoTrader {
                             *enables.lock().unwrap().get_mut(&order.product).expect("") = true;
                             match result {
                                 Ok(response) => {
-                                    let response = response
-                                        .json::<OrderAddedMessage>()
-                                        .await
-                                        .expect("Failed to parse order added response");
-                                    assert_eq!(
-                                        response.resting_volume, 0,
-                                        "For IOC orders there should be no resting volume"
-                                    );
-                                    if response.filled_volume != 0 {
-                                        *ready.lock().unwrap().get_mut(&order.product).expect("") =
-                                            Some(response.order_id);
+                                    if let std::result::Result::Ok(response) =
+                                        response.json::<OrderAddedMessage>().await
+                                    {
+                                        assert_eq!(
+                                            response.resting_volume, 0,
+                                            "For IOC orders there should be no resting volume"
+                                        );
+                                        if response.filled_volume != 0 {
+                                            *ready
+                                                .lock()
+                                                .unwrap()
+                                                .get_mut(&order.product)
+                                                .expect("") = Some(response.order_id);
+                                        }
                                     }
                                 }
                                 Err(err) => println!("{}", err),
