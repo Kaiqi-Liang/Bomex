@@ -26,7 +26,7 @@ macro_rules! url {
 
 macro_rules! send_order {
     ($username:expr, $password:expr, $message:expr) => {
-        let result = reqwest::Client::new()
+        reqwest::Client::new()
             .post(url!(AutoTrader::EXECUTION_PORT, "execution"))
             .form(&[
                 ("username", $username),
@@ -37,11 +37,7 @@ macro_rules! send_order {
                 ),
             ])
             .send()
-            .await;
-        match result {
-            Ok(response) => println!("{:?}", response.text().await),
-            Err(err) => println!("{}", err),
-        }
+            .await
     };
 }
 
@@ -185,19 +181,24 @@ impl AutoTrader {
                         .get(&book.product)
                         .expect("Book does not exist")
                 }) {
-                    for order in find_arbs(index) {
+                    for order in find_arbs(index, enables.clone()) {
                         let username = self.username.clone();
                         let password = self.password.clone();
                         let enables = enables.clone();
                         spawn(async move {
-                            send_order!(
+                            *enables.lock().unwrap().get_mut(&order.product).expect("") = false;
+                            let result = send_order!(
                                 to_string(&username)
                                     .expect("Failed to conert username to string")
                                     .trim_matches('"'),
                                 password,
                                 order
                             );
-                            *enables.lock().unwrap().get_mut(&order.product).expect("") = false;
+                            *enables.lock().unwrap().get_mut(&order.product).expect("") = true;
+                            match result {
+                                Ok(response) => println!("{:?}", response.text().await),
+                                Err(err) => println!("{}", err),
+                            }
                         });
                     }
                 }

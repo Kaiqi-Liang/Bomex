@@ -4,7 +4,11 @@ use crate::{
     order::{AddMessage, MessageType, OrderType},
     types::{Price, Side, Volume},
 };
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 #[derive(Default)]
 struct IndexTheo {
@@ -18,7 +22,11 @@ enum Strategy {
     BuyUnderlyingSellIndex,
 }
 
-fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage> {
+fn find_arbs_for_side(
+    index: &[&Book; 4],
+    strategy: Strategy,
+    enables: Arc<Mutex<HashMap<String, bool>>>,
+) -> Vec<AddMessage> {
     let mut orders = Vec::new();
     let mut underlying_level = [PriceLevel::default(); 3];
     let mut index_volume = Volume::default();
@@ -99,6 +107,7 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
         }
     }
     if index_volume != 0 && index_volume == underlying_volume {
+        // TODO: use enables to deal with position limit
         for (i, price) in underlying_price.into_iter().enumerate() {
             let book = index.get(i).expect("Book does not exist");
             orders.push(AddMessage {
@@ -134,10 +143,13 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
     orders
 }
 
-pub fn find_arbs(index: &[&Book; 4]) -> Vec<AddMessage> {
-    let mut orders = find_arbs_for_side(index, Strategy::BuyUnderlyingSellIndex);
+pub fn find_arbs(
+    index: &[&Book; 4],
+    enables: Arc<Mutex<HashMap<String, bool>>>,
+) -> Vec<AddMessage> {
+    let mut orders = find_arbs_for_side(index, Strategy::BuyUnderlyingSellIndex, enables.clone());
     if orders.is_empty() {
-        orders = find_arbs_for_side(index, Strategy::BuyIndexSellUnderlying);
+        orders = find_arbs_for_side(index, Strategy::BuyIndexSellUnderlying, enables);
     }
     orders
 }
@@ -162,7 +174,10 @@ mod tests {
             Book::default(),
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![],
         );
     }
@@ -213,7 +228,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![],
         );
     }
@@ -268,7 +286,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -356,7 +377,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -440,7 +464,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -527,7 +554,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -610,7 +640,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -694,7 +727,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -778,7 +814,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -862,7 +901,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new()))
+            ),
             vec![],
         );
     }
@@ -913,7 +955,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(
+                &[&books[0], &books[1], &books[2], &books[3]],
+                Arc::new(Mutex::new(HashMap::new())),
+            ),
             vec![],
         );
     }
