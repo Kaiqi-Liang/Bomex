@@ -1,7 +1,10 @@
 use crate::{arbitrage::find_arbs, book::Book, feed::HasSequence, username::Username};
 use futures_util::stream::{SplitStream, StreamExt};
 use serde_json::to_string;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use tokio::{net::TcpStream, spawn};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
@@ -161,20 +164,29 @@ impl AutoTrader {
             }
 
             // TODO: let username = self.username.clone();
-            let mut indices: HashMap<String, [Option<&Book>; 4]> = HashMap::new();
+            let mut indices: HashMap<String, [&Book; 4]> = HashMap::new();
+            let enables: Arc<Mutex<HashMap<String, bool>>> = Arc::new(Mutex::new(HashMap::new()));
             for book in self.books.values() {
-                let entry = indices.entry(book.expiry.clone()).or_insert([None; 4]);
-                entry[book.station_id as usize] = Some(book);
+                let mut enables = enables.lock().unwrap();
+                if !enables.contains_key(&book.product) {
+                    enables.insert(book.product.clone(), true);
+                }
+                let entry = indices.entry(book.expiry.clone()).or_insert([&book; 4]);
+                entry[book.station_id as usize] = book;
             }
-            for index in indices
-                .values()
-                .map(|index| index.map(|book| book.expect("Book is empty")))
-            {
-                for order in find_arbs(&index) {
-                    let password = self.password.clone();
-                    spawn(async move {
-                        send_order!("kliang", password, order);
-                    });
+            for index in indices.values() {
+                if index
+                    .iter()
+                    .all(|book| *enables.lock().unwrap().get(&book.product).unwrap())
+                {
+                    for order in find_arbs(index) {
+                        let password = self.password.clone();
+                        let enables = enables.clone();
+                        spawn(async move {
+                            send_order!("kliang", password, order);
+                            *enables.lock().unwrap().get_mut(&order.product).expect("") = false;
+                        });
+                    }
                 }
             }
         }
