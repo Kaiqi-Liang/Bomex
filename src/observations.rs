@@ -62,12 +62,13 @@ pub async fn refresh_latest_observations(
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum Station {
     SydAirport = 0,
     SydOlympicPark = 1,
     CanberraAirport = 2,
     Index = 3,
+    #[default]
     CapeByron,
 }
 

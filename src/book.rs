@@ -7,7 +7,7 @@ use crate::{
 };
 use std::collections::{BTreeMap, HashMap};
 
-#[derive(Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq)]
 pub struct Book {
     pub bids: BTreeMap<Price, Volume>,
     pub asks: BTreeMap<Price, Volume>,

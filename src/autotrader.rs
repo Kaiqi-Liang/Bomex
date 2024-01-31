@@ -161,11 +161,21 @@ impl AutoTrader {
             }
 
             // TODO: let username = self.username.clone();
-            for order in find_arbs(&self.books) {
-                let password = self.password.clone();
-                spawn(async move {
-                    send_order!("kliang", password, order);
-                });
+            let mut indices: HashMap<String, [Option<&Book>; 4]> = HashMap::new();
+            for book in self.books.values() {
+                let entry = indices.entry(book.expiry.clone()).or_insert([None; 4]);
+                entry[book.station_id as usize] = Some(book);
+            }
+            for index in indices
+                .values()
+                .map(|index| index.map(|book| book.expect("Book is empty")))
+            {
+                for order in find_arbs(&index) {
+                    let password = self.password.clone();
+                    spawn(async move {
+                        send_order!("kliang", password, order);
+                    });
+                }
             }
         }
         Ok(())
@@ -271,7 +281,7 @@ mod tests {
                     volume: Volume(20),
                 }),
                 None
-            )
+            ),
         );
         assert_eq!(
             trader.books,
@@ -297,7 +307,7 @@ mod tests {
                     station_id: Station::SydOlympicPark,
                     expiry: EXPIRY.to_string(),
                 },
-            )])
+            )]),
         );
     }
 
@@ -348,7 +358,7 @@ mod tests {
                     volume: Volume(20),
                 }),
                 None
-            )
+            ),
         );
         assert_eq!(
             trader.books,
@@ -374,7 +384,7 @@ mod tests {
                     station_id: Station::SydOlympicPark,
                     expiry: EXPIRY.to_string(),
                 },
-            )])
+            )]),
         );
 
         parse_json!(trader, State::Feed, {
@@ -428,7 +438,7 @@ mod tests {
                     price: Price(3101),
                     volume: Volume(50),
                 }),
-            )
+            ),
         );
         assert_eq!(
             trader.books,
@@ -480,7 +490,7 @@ mod tests {
                     station_id: Station::SydOlympicPark,
                     expiry: EXPIRY.to_string(),
                 },
-            )])
+            )]),
         );
 
         parse_json!(trader, State::Feed, {
@@ -506,7 +516,7 @@ mod tests {
                     price: Price(3101),
                     volume: Volume(50),
                 }),
-            )
+            ),
         );
         assert_eq!(
             trader.books,
@@ -550,7 +560,7 @@ mod tests {
                     station_id: Station::SydOlympicPark,
                     expiry: EXPIRY.to_string(),
                 },
-            )])
+            )]),
         );
 
         parse_json!(trader, State::Feed, {
@@ -604,7 +614,7 @@ mod tests {
                     price: Price(3001),
                     volume: Volume(1),
                 }),
-            )
+            ),
         );
         assert_eq!(
             trader.books,
@@ -680,7 +690,7 @@ mod tests {
                     station_id: Station::SydOlympicPark,
                     expiry: EXPIRY.to_string(),
                 },
-            )])
+            )]),
         );
 
         parse_json!(trader, State::Feed, {
@@ -712,7 +722,7 @@ mod tests {
                     price: Price(3101),
                     volume: Volume(50),
                 }),
-            )
+            ),
         );
         assert_eq!(
             trader.books,
@@ -776,7 +786,7 @@ mod tests {
                     station_id: Station::SydOlympicPark,
                     expiry: EXPIRY.to_string(),
                 },
-            )])
+            )]),
         );
 
         // wash trade
@@ -824,7 +834,7 @@ mod tests {
                     price: Price(3101),
                     volume: Volume(50),
                 }),
-            )
+            ),
         );
         assert_eq!(
             trader.books,
@@ -876,7 +886,7 @@ mod tests {
                     station_id: Station::SydOlympicPark,
                     expiry: EXPIRY.to_string(),
                 },
-            )])
+            )]),
         );
 
         parse_json!(trader, State::Feed, {
