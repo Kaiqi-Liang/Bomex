@@ -107,7 +107,7 @@ impl AutoTrader {
 
     /// Outbound decoder for feed
     fn parse_feed_message(&mut self, message: crate::feed::Message, state: State) {
-        println!("{:#?}", message);
+        // println!("{:#?}", message);
         match message {
             crate::feed::Message::Future(future) => {
                 assert_eq!(

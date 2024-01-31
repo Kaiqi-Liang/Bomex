@@ -4,6 +4,7 @@ use std::{
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
+#[macro_export]
 macro_rules! to_underlying {
     ($strong:expr) => {
         $strong.0
@@ -40,6 +41,13 @@ impl Add<u16> for Price {
     }
 }
 
+impl Add<Price> for Price {
+    type Output = Price;
+    fn add(self, rhs: Self) -> Self::Output {
+        self + to_underlying!(rhs)
+    }
+}
+
 impl From<f64> for Price {
     fn from(price: f64) -> Self {
         Price((price * 100.0) as u16)
@@ -68,6 +76,10 @@ impl<'de> Deserialize<'de> for Price {
 
 #[derive(Eq, PartialOrd, Ord, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct Volume(pub u16);
+
+impl Volume {
+    pub const MAX: Self = Volume(u16::MAX);
+}
 
 impl Debug for Volume {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

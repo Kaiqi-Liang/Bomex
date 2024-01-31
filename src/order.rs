@@ -3,10 +3,10 @@ use serde::Serialize;
 
 #[derive(PartialEq, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AddMessage<'a> {
+pub struct AddMessage {
     #[serde(rename = "type")]
     pub message_type: MessageType,
-    pub product: &'a str,
+    pub product: String,
     pub price: Price,
     pub side: Side,
     pub volume: Volume,
@@ -15,19 +15,19 @@ pub struct AddMessage<'a> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DeleteMessage<'a> {
+pub struct DeleteMessage {
     #[serde(rename = "type")]
     pub message_type: MessageType,
-    pub product: &'a str,
-    pub id: &'a str,
+    pub product: String,
+    pub id: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BulkDeleteMessage<'a> {
+pub struct BulkDeleteMessage {
     #[serde(rename = "type")]
     pub message_type: MessageType,
-    pub product: &'a str,
+    pub product: String,
 }
 
 #[derive(PartialEq, Debug, Serialize)]

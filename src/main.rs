@@ -28,6 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     }
     // });
 
+    // TODO: move connecting to websocket to AutoTrader::new()
     let (stream, response) =
         connect_async(url!("ws", AutoTrader::FEED_RECOVERY_PORT, "information"))
             .await
