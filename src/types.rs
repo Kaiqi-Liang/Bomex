@@ -17,7 +17,7 @@ pub enum Side {
     Sell,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Price(pub u16);
 
 impl Debug for Price {
@@ -66,7 +66,7 @@ impl<'de> Deserialize<'de> for Price {
     }
 }
 
-#[derive(Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Eq, PartialOrd, Ord, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct Volume(pub u16);
 
 impl Debug for Volume {

@@ -1,46 +1,72 @@
-use std::{collections::HashMap, sync::MutexGuard};
-
 use crate::{
     book::Book,
     observations::Station,
     order::{AddMessage, MessageType, OrderType},
     types::{Price, Side, Volume},
 };
+use std::collections::HashMap;
 
-pub fn find_arbs(books: MutexGuard<'_, HashMap<String, Book>>) -> Vec<AddMessage<'_>> {
+pub fn find_arbs<'a>(books: &HashMap<String, Book>) -> Vec<AddMessage<'a>> {
     // TODO: complete this strategy
     let mut orders = Vec::new();
-    let indices: HashMap<String, Vec<&Book>> =
-        books.values().fold(HashMap::new(), |mut acc, book| {
-            acc.entry(book.expiry.clone()).or_default().push(book);
-            acc
-        });
-    for (_, index) in indices {
-        let mut underlying_best_bids = Vec::new();
-        let mut underlying_best_asks = Vec::new();
-        #[allow(unused_variables)]
-        let mut index_best_bid = None;
-        #[allow(unused_variables)]
-        let mut index_best_ask = None;
-        for book in index {
-            let (best_bid, best_ask) = book.bbo();
-            #[allow(unused_assignments)]
+    let mut indices: HashMap<String, [Option<&Book>; 4]> = HashMap::new();
+    for book in books.values() {
+        let entry = indices.entry(book.expiry.clone()).or_insert([None; 4]);
+        entry[book.station_id as usize] = Some(book);
+    }
+    for index in indices
+        .values()
+        .map(|index| index.map(|book| book.expect("Book is empty")))
+    {
+        // let mut underlying_best_asks = [PriceLevel::default(); 3];
+        // let mut underlying_asks = [PriceLevel::default(); 3];
+        // let mut underlying_min_volume = Volume(u16::MAX);
+        // let mut underlying_index_volume = Volume(u16::MAX);
+        let mut can_buy_underlying_sell_index = false;
+        let mut buy_underlying_sell_index_iters = index.map(|book| {
             if book.station_id == Station::Index {
-                index_best_bid = best_bid;
-                index_best_ask = best_ask;
+                book.bids.iter()
             } else {
-                underlying_best_bids.push(best_bid);
-                underlying_best_asks.push(best_ask);
+                book.asks.iter()
+            }
+        });
+        'outer: loop {
+            for iter in buy_underlying_sell_index_iters.iter_mut() {
+                if let Some((price, volume)) = iter.next() {
+                } else {
+                    break 'outer;
+                }
             }
         }
-        orders.push(AddMessage {
-            message_type: MessageType::Add,
-            product: "",
-            price: Price(0),
-            side: Side::Buy,
-            volume: Volume(1),
-            order_type: OrderType::Ioc,
-        });
+        // for book in index {
+        //     if book.station_id != Station::Index {
+        //         for best_ask in book.asks.iter() {
+        //             min_volume = *best_ask.1.min(&min_volume);
+        //             underlying_best_asks[book.station_id as usize] = best_ask.into();
+        //         }
+        //         if underlying_best_asks
+        //             .iter()
+        //             .find(|price_level| price_level.volume == 0)
+        //             .is_some()
+        //         {
+        //             can_buy_underlying_sell_index = true;
+        //             break;
+        //         }
+        //     }
+        // }
+        if !can_buy_underlying_sell_index {
+            // for best_bid in underlying_best_asks.iter_mut() {
+            //     best_bid.volume -= min_volume;
+            // }
+            orders.push(AddMessage {
+                message_type: MessageType::Add,
+                product: "",
+                price: Price(0),
+                side: Side::Buy,
+                volume: Volume(1),
+                order_type: OrderType::Ioc,
+            });
+        }
     }
     orders
 }
@@ -49,32 +75,36 @@ pub fn find_arbs(books: MutexGuard<'_, HashMap<String, Book>>) -> Vec<AddMessage
 mod tests {
     use super::*;
     use crate::book::Position;
-    use std::{collections::BTreeMap, sync::Mutex};
+    use std::collections::BTreeMap;
     static EXPIRY: &str = "2024-01-04 09:50+1100";
+    static PRODUCT1: &str = "1";
+    static PRODUCT2: &str = "2";
+    static PRODUCT3: &str = "3";
+    static PRODUCT4: &str = "4";
 
     #[test]
     fn test_no_orders() {
-        let books = Mutex::new(HashMap::new());
-        assert_eq!(find_arbs(books.lock().unwrap()), vec![]);
+        let books = HashMap::new();
+        assert_eq!(find_arbs(&books), vec![]);
     }
 
     #[test]
     fn test_no_best_bid() {
-        let books = Mutex::new(HashMap::from([
+        let books = HashMap::from([
             (
-                String::from("1"),
+                PRODUCT1.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(1200), Volume(20)), (Price(1100), Volume(11))]),
                     asks: BTreeMap::from([(Price(1000), Volume(5)), (Price(1050), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("1"),
+                    product: PRODUCT1.to_string(),
                     station_id: Station::Index,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("2"),
+                PRODUCT2.to_string(),
                 Book {
                     bids: BTreeMap::new(),
                     asks: BTreeMap::from([
@@ -85,44 +115,56 @@ mod tests {
                     ]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("2"),
+                    product: PRODUCT2.to_string(),
                     station_id: Station::SydAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("3"),
+                PRODUCT3.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(500), Volume(1)), (Price(300), Volume(8))]),
                     asks: BTreeMap::from([(Price(700), Volume(9)), (Price(800), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("3"),
+                    product: PRODUCT3.to_string(),
                     station_id: Station::CanberraAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
-        ]));
-        assert_eq!(find_arbs(books.lock().unwrap()), vec![]);
+            (
+                PRODUCT4.to_string(),
+                Book {
+                    bids: BTreeMap::from([(Price(500), Volume(1)), (Price(300), Volume(8))]),
+                    asks: BTreeMap::from([(Price(700), Volume(9)), (Price(800), Volume(1))]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: PRODUCT4.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+        ]);
+        assert_eq!(find_arbs(&books), vec![]);
     }
 
     #[test]
     fn test_no_best_ask() {
-        let books = Mutex::new(HashMap::from([
+        let books = HashMap::from([
             (
-                String::from("1"),
+                PRODUCT1.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(1200), Volume(20)), (Price(1100), Volume(11))]),
                     asks: BTreeMap::new(),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("1"),
+                    product: PRODUCT1.to_string(),
                     station_id: Station::Index,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("2"),
+                PRODUCT2.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(200), Volume(6)), (Price(100), Volume(5))]),
                     asks: BTreeMap::from([
@@ -133,44 +175,44 @@ mod tests {
                     ]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("2"),
+                    product: PRODUCT2.to_string(),
                     station_id: Station::SydAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("3"),
+                PRODUCT3.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(500), Volume(1)), (Price(300), Volume(8))]),
                     asks: BTreeMap::from([(Price(700), Volume(9)), (Price(800), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("3"),
+                    product: PRODUCT3.to_string(),
                     station_id: Station::CanberraAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
-        ]));
-        assert_eq!(find_arbs(books.lock().unwrap()), vec![]);
+        ]);
+        assert_eq!(find_arbs(&books), vec![]);
     }
 
     #[test]
     fn test_no_arbs() {
-        let books = Mutex::new(HashMap::from([
+        let books = HashMap::from([
             (
-                String::from("1"),
+                PRODUCT1.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(700), Volume(20)), (Price(500), Volume(11))]),
                     asks: BTreeMap::from([(Price(1000), Volume(5)), (Price(1050), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("1"),
+                    product: PRODUCT1.to_string(),
                     station_id: Station::Index,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("2"),
+                PRODUCT2.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(200), Volume(6)), (Price(100), Volume(5))]),
                     asks: BTreeMap::from([
@@ -181,44 +223,44 @@ mod tests {
                     ]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("2"),
+                    product: PRODUCT2.to_string(),
                     station_id: Station::SydAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("3"),
+                PRODUCT3.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(500), Volume(1)), (Price(300), Volume(8))]),
                     asks: BTreeMap::from([(Price(700), Volume(9)), (Price(800), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("3"),
+                    product: PRODUCT3.to_string(),
                     station_id: Station::CanberraAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
-        ]));
-        assert_eq!(find_arbs(books.lock().unwrap()), vec![]);
+        ]);
+        assert_eq!(find_arbs(&books), vec![]);
     }
 
     #[test]
-    fn test_buy_underlying_sell_etf() {
-        let books = Mutex::new(HashMap::from([
+    fn test_buy_underlying_sell_index() {
+        let books = HashMap::from([
             (
-                String::from("1"),
+                PRODUCT1.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(1200), Volume(20)), (Price(1100), Volume(11))]),
                     asks: BTreeMap::from([(Price(1300), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("1"),
+                    product: PRODUCT1.to_string(),
                     station_id: Station::Index,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("2"),
+                PRODUCT2.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(200), Volume(6)), (Price(100), Volume(5))]),
                     asks: BTreeMap::from([
@@ -229,30 +271,30 @@ mod tests {
                     ]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("2"),
+                    product: PRODUCT2.to_string(),
                     station_id: Station::SydAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("3"),
+                PRODUCT3.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(500), Volume(1)), (Price(300), Volume(8))]),
                     asks: BTreeMap::from([(Price(700), Volume(9)), (Price(800), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("3"),
+                    product: PRODUCT3.to_string(),
                     station_id: Station::CanberraAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
-        ]));
+        ]);
         assert_eq!(
-            find_arbs(books.lock().unwrap()),
+            find_arbs(&books),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
-                    product: "1",
+                    product: PRODUCT1,
                     price: Price(1200),
                     side: Side::Sell,
                     volume: Volume(3),
@@ -260,7 +302,7 @@ mod tests {
                 },
                 AddMessage {
                     message_type: MessageType::Add,
-                    product: "2",
+                    product: PRODUCT2,
                     price: Price(300),
                     side: Side::Buy,
                     volume: Volume(1),
@@ -287,23 +329,23 @@ mod tests {
     }
 
     #[test]
-    fn test_buy_etf_sell_underlying() {
+    fn test_buy_index_sell_underlying() {
         let expiry = String::from("2024-01-04 09:50+1100");
-        let books = Mutex::new(HashMap::from([
+        let books = HashMap::from([
             (
-                String::from("1"),
+                PRODUCT1.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(500), Volume(20)), (Price(450), Volume(11))]),
                     asks: BTreeMap::from([(Price(850), Volume(2)), (Price(1200), Volume(10))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("1"),
+                    product: PRODUCT1.to_string(),
                     station_id: Station::Index,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("2"),
+                PRODUCT2.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(400), Volume(6)), (Price(350), Volume(5))]),
                     asks: BTreeMap::from([
@@ -314,26 +356,26 @@ mod tests {
                     ]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("2"),
+                    product: PRODUCT2.to_string(),
                     station_id: Station::SydAirport,
                     expiry: EXPIRY.to_string(),
                 },
             ),
             (
-                String::from("3"),
+                PRODUCT3.to_string(),
                 Book {
                     bids: BTreeMap::from([(Price(500), Volume(2)), (Price(600), Volume(8))]),
                     asks: BTreeMap::from([(Price(750), Volume(9)), (Price(850), Volume(1))]),
                     orders: HashMap::new(),
                     position: Position::default(),
-                    product: String::from("3"),
+                    product: PRODUCT3.to_string(),
                     station_id: Station::CanberraAirport,
                     expiry: expiry.clone(),
                 },
             ),
-        ]));
+        ]);
         assert_eq!(
-            find_arbs(books.lock().unwrap()),
+            find_arbs(&books),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -365,6 +407,106 @@ mod tests {
                     price: Price(700),
                     side: Side::Sell,
                     volume: Volume(3),
+                    order_type: OrderType::Ioc,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiple_levels_arbs() {
+        let books = HashMap::from([
+            (
+                PRODUCT1.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::from([(Price(1100), Volume(4)), (Price(1200), Volume(25))]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: PRODUCT1.to_string(),
+                    station_id: Station::SydAirport,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                PRODUCT2.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::from([(Price(1300), Volume(20))]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: PRODUCT2.to_string(),
+                    station_id: Station::SydOlympicPark,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                PRODUCT3.to_string(),
+                Book {
+                    bids: BTreeMap::new(),
+                    asks: BTreeMap::from([
+                        (Price(500), Volume(2)),
+                        (Price(600), Volume(3)),
+                        (Price(700), Volume(5)),
+                    ]),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: PRODUCT3.to_string(),
+                    station_id: Station::CanberraAirport,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+            (
+                PRODUCT4.to_string(),
+                Book {
+                    bids: BTreeMap::from([
+                        (Price(3500), Volume(1)),
+                        (Price(3400), Volume(3)),
+                        (Price(3200), Volume(20)),
+                        (Price(3000), Volume(3)),
+                    ]),
+                    asks: BTreeMap::new(),
+                    orders: HashMap::new(),
+                    position: Position::default(),
+                    product: PRODUCT4.to_string(),
+                    station_id: Station::Index,
+                    expiry: EXPIRY.to_string(),
+                },
+            ),
+        ]);
+        assert_eq!(
+            find_arbs(&books),
+            vec![
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: PRODUCT1,
+                    price: Price(1200),
+                    side: Side::Buy,
+                    volume: Volume(5),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: PRODUCT2,
+                    price: Price(1300),
+                    side: Side::Buy,
+                    volume: Volume(5),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: PRODUCT3,
+                    price: Price(600),
+                    side: Side::Buy,
+                    volume: Volume(5),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: PRODUCT4,
+                    price: Price(3200),
+                    side: Side::Sell,
+                    volume: Volume(5),
                     order_type: OrderType::Ioc,
                 },
             ]

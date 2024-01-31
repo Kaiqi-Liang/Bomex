@@ -52,7 +52,7 @@ macro_rules! get_side_and_exposure {
     };
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
 pub struct PriceLevel {
     pub price: Price,
     pub volume: Volume,
@@ -81,6 +81,7 @@ impl Book {
         }
     }
 
+    #[allow(unused)]
     pub fn bbo(&self) -> (Option<PriceLevel>, Option<PriceLevel>) {
         (
             self.bids.last_key_value().map(|best_bid| best_bid.into()),

@@ -1,10 +1,7 @@
 use crate::{arbitrage::find_arbs, book::Book, feed::HasSequence, username::Username};
 use futures_util::stream::{SplitStream, StreamExt};
 use serde_json::to_string;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
 use tokio::{net::TcpStream, spawn};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
@@ -44,8 +41,6 @@ macro_rules! send_order {
 macro_rules! get_book {
     ($books:expr, $message:ident) => {
         $books
-            .lock()
-            .unwrap()
             .get_mut(&$message.product)
             .expect("Product is not in the books")
     };
@@ -62,7 +57,7 @@ type Websocket = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 pub struct AutoTrader {
     pub username: Username,
     pub password: String,
-    pub books: Arc<Mutex<HashMap<String, Book>>>,
+    pub books: HashMap<String, Book>,
     pub sequence: u32,
     pub stream: Option<Websocket>,
 }
@@ -86,7 +81,7 @@ impl AutoTrader {
         AutoTrader {
             username,
             password,
-            books: Arc::new(Mutex::new(HashMap::new())),
+            books: HashMap::new(),
             sequence: 0,
             stream,
         }
@@ -104,21 +99,8 @@ impl AutoTrader {
         }
         println!(
             "Finished recovery with following books: {:#?}",
-            self.books.lock().unwrap().keys(),
+            self.books.keys(),
         );
-
-        // TODO use self.username
-        // let username = self.username.clone();
-        let password = self.password.clone();
-        let readonly = self.books.clone();
-        spawn(async move {
-            loop {
-                let orders = find_arbs(readonly.lock().unwrap());
-                for order in orders {
-                    send_order!("kliang", password, order);
-                }
-            }
-        });
         self.poll().await?;
         Ok(())
     }
@@ -132,7 +114,7 @@ impl AutoTrader {
                     future.expiry, future.halt_time,
                     "Expiry time should be the same as halt time",
                 );
-                self.books.lock().unwrap().insert(
+                self.books.insert(
                     future.product.clone(),
                     Book::new(future.product, future.station_id, future.expiry),
                 );
@@ -156,7 +138,7 @@ impl AutoTrader {
                 println!("Index definition: {index:#?}");
             }
             crate::feed::Message::TradingHalt(halt) => {
-                self.books.lock().unwrap().remove(&halt.product);
+                self.books.remove(&halt.product);
             }
         }
     }
@@ -174,8 +156,16 @@ impl AutoTrader {
                 panic!(
                     "Expecting sequence number {} but got {}",
                     next_sequence,
-                    message.sequence()
+                    message.sequence(),
                 );
+            }
+
+            // TODO: let username = self.username.clone();
+            for order in find_arbs(&self.books) {
+                let password = self.password.clone();
+                spawn(async move {
+                    send_order!("kliang", password, order);
+                });
             }
         }
         Ok(())
@@ -209,7 +199,7 @@ mod tests {
     fn test_recovery() {
         // TODO: fix this test
         let mut trader = AutoTrader::new(Username::KLiang, String::new(), None);
-        assert_eq!(*trader.books.lock().unwrap(), HashMap::new());
+        assert_eq!(trader.books, HashMap::new());
 
         parse_json!(trader, State::Recovery, {
             "type": "FUTURE",
@@ -272,8 +262,6 @@ mod tests {
         assert_eq!(
             trader
                 .books
-                .lock()
-                .unwrap()
                 .get(PRODUCT)
                 .expect("Book does not exist")
                 .bbo(),
@@ -286,7 +274,7 @@ mod tests {
             )
         );
         assert_eq!(
-            *trader.books.lock().unwrap(),
+            trader.books,
             HashMap::from([(
                 PRODUCT.to_string(),
                 Book {
@@ -316,7 +304,7 @@ mod tests {
     #[test]
     fn test_feed() {
         let mut trader = AutoTrader::new(Username::KLiang, String::new(), None);
-        assert_eq!(*trader.books.lock().unwrap(), HashMap::new());
+        assert_eq!(trader.books, HashMap::new());
 
         parse_json!(trader, State::Feed, {
             "type": "FUTURE",
@@ -351,8 +339,6 @@ mod tests {
         assert_eq!(
             trader
                 .books
-                .lock()
-                .unwrap()
                 .get(PRODUCT)
                 .expect("Book does not exist")
                 .bbo(),
@@ -365,7 +351,7 @@ mod tests {
             )
         );
         assert_eq!(
-            *trader.books.lock().unwrap(),
+            trader.books,
             HashMap::from([(
                 PRODUCT.to_string(),
                 Book {
@@ -430,8 +416,6 @@ mod tests {
         assert_eq!(
             trader
                 .books
-                .lock()
-                .unwrap()
                 .get(PRODUCT)
                 .expect("Book does not exist")
                 .bbo(),
@@ -447,7 +431,7 @@ mod tests {
             )
         );
         assert_eq!(
-            *trader.books.lock().unwrap(),
+            trader.books,
             HashMap::from([(
                 PRODUCT.to_string(),
                 Book {
@@ -510,8 +494,6 @@ mod tests {
         assert_eq!(
             trader
                 .books
-                .lock()
-                .unwrap()
                 .get(PRODUCT)
                 .expect("Book does not exist")
                 .bbo(),
@@ -527,7 +509,7 @@ mod tests {
             )
         );
         assert_eq!(
-            *trader.books.lock().unwrap(),
+            trader.books,
             HashMap::from([(
                 PRODUCT.to_string(),
                 Book {
@@ -610,8 +592,6 @@ mod tests {
         assert_eq!(
             trader
                 .books
-                .lock()
-                .unwrap()
                 .get(PRODUCT)
                 .expect("Book does not exist")
                 .bbo(),
@@ -627,7 +607,7 @@ mod tests {
             )
         );
         assert_eq!(
-            *trader.books.lock().unwrap(),
+            trader.books,
             HashMap::from([(
                 PRODUCT.to_string(),
                 Book {
@@ -720,8 +700,6 @@ mod tests {
         assert_eq!(
             trader
                 .books
-                .lock()
-                .unwrap()
                 .get(PRODUCT)
                 .expect("Book does not exist")
                 .bbo(),
@@ -737,7 +715,7 @@ mod tests {
             )
         );
         assert_eq!(
-            *trader.books.lock().unwrap(),
+            trader.books,
             HashMap::from([(
                 PRODUCT.to_string(),
                 Book {
@@ -834,8 +812,6 @@ mod tests {
         assert_eq!(
             trader
                 .books
-                .lock()
-                .unwrap()
                 .get(PRODUCT)
                 .expect("Book does not exist")
                 .bbo(),
@@ -851,7 +827,7 @@ mod tests {
             )
         );
         assert_eq!(
-            *trader.books.lock().unwrap(),
+            trader.books,
             HashMap::from([(
                 PRODUCT.to_string(),
                 Book {
@@ -918,6 +894,6 @@ mod tests {
             "sequence": 14
         });
 
-        assert_eq!(*trader.books.lock().unwrap(), HashMap::new());
+        assert_eq!(trader.books, HashMap::new());
     }
 }

@@ -54,12 +54,7 @@ pub async fn refresh_latest_observations(
         .await?;
     for observation in response {
         let mut observations = observations.lock().unwrap();
-        if !observations.contains_key(&observation.station) {
-            observations.insert(observation.station.clone(), BTreeSet::new());
-        }
-        let existing_observations = observations
-            .get_mut(&observation.station)
-            .expect("observations.contains_key(&observation.station)");
+        let existing_observations = observations.entry(observation.station).or_default();
         if !existing_observations.contains(&observation) {
             existing_observations.insert(observation);
         }
@@ -67,13 +62,13 @@ pub async fn refresh_latest_observations(
     Ok(())
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum Station {
-    SydAirport,
-    SydOlympicPark,
-    CanberraAirport,
+    SydAirport = 0,
+    SydOlympicPark = 1,
+    CanberraAirport = 2,
+    Index = 3,
     CapeByron,
-    Index,
 }
 
 impl From<u64> for Station {
