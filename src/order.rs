@@ -1,5 +1,8 @@
-use crate::types::{Price, Side, Volume};
-use serde::Serialize;
+use crate::{
+    types::{Price, Side, Volume},
+    username::Username,
+};
+use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -11,6 +14,17 @@ pub struct AddMessage {
     pub side: Side,
     pub volume: Volume,
     pub order_type: OrderType,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderAddedMessage {
+    pub order_id: String,
+    side: Side,
+    price: Price,
+    pub filled_volume: Volume,
+    pub resting_volume: Volume,
+    owner: Username,
 }
 
 #[derive(Serialize)]

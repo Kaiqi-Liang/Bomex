@@ -1,4 +1,10 @@
-use crate::{arbitrage::find_arbs, book::Book, feed::HasSequence, username::Username};
+use crate::{
+    arbitrage::find_arbs,
+    book::Book,
+    feed::{HasSequence, TradeMessage},
+    order::OrderAddedMessage,
+    username::Username,
+};
 use futures_util::stream::{SplitStream, StreamExt};
 use serde_json::to_string;
 use std::{
@@ -148,12 +154,28 @@ impl AutoTrader {
         &mut self,
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let enables: Arc<Mutex<HashMap<String, bool>>> = Arc::new(Mutex::new(HashMap::new()));
+        let ready: Arc<Mutex<HashMap<String, Option<String>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         while let Some(message) = stream.next().await {
             let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
             #[allow(clippy::comparison_chain)]
             if message.sequence() == next_sequence {
                 self.sequence = next_sequence;
+                match message {
+                    crate::feed::Message::Trade(ref trade) => {
+                        let mut ready = ready.lock().unwrap();
+                        if let Some(order_id) = ready.get(&trade.product).expect("") {
+                            if trade.aggressor_order == order_id.clone() {
+                                ready
+                                    .entry(trade.product.to_owned())
+                                    .and_modify(|ready| *ready = None);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
                 self.parse_feed_message(message);
             } else if message.sequence() > next_sequence {
                 panic!(
@@ -164,11 +186,14 @@ impl AutoTrader {
             }
 
             let mut indices: HashMap<String, [&Book; 4]> = HashMap::new();
-            let enables: Arc<Mutex<HashMap<String, bool>>> = Arc::new(Mutex::new(HashMap::new()));
             for book in self.books.values() {
                 let mut enables = enables.lock().unwrap();
                 if !enables.contains_key(&book.product) {
                     enables.insert(book.product.clone(), true);
+                }
+                let mut ready = ready.lock().unwrap();
+                if !ready.contains_key(&book.product) {
+                    ready.insert(book.product.clone(), None);
                 }
                 let entry = indices.entry(book.expiry.clone()).or_insert([&book; 4]);
                 entry[book.station_id as usize] = book;
@@ -180,11 +205,18 @@ impl AutoTrader {
                         .unwrap()
                         .get(&book.product)
                         .expect("Book does not exist")
+                        && ready
+                            .lock()
+                            .unwrap()
+                            .get(&book.product)
+                            .expect("Book does not exist")
+                            .is_none()
                 }) {
                     for order in find_arbs(index, enables.clone()) {
                         let username = self.username.clone();
                         let password = self.password.clone();
                         let enables = enables.clone();
+                        let ready = ready.clone();
                         spawn(async move {
                             *enables.lock().unwrap().get_mut(&order.product).expect("") = false;
                             let result = send_order!(
@@ -196,7 +228,20 @@ impl AutoTrader {
                             );
                             *enables.lock().unwrap().get_mut(&order.product).expect("") = true;
                             match result {
-                                Ok(response) => println!("{:?}", response.text().await),
+                                Ok(response) => {
+                                    let response = response
+                                        .json::<OrderAddedMessage>()
+                                        .await
+                                        .expect("Failed to parse order added response");
+                                    assert_eq!(
+                                        response.resting_volume, 0,
+                                        "For IOC orders there should be no resting volume"
+                                    );
+                                    if response.filled_volume != 0 {
+                                        *ready.lock().unwrap().get_mut(&order.product).expect("") =
+                                            Some(response.order_id);
+                                    }
+                                }
                                 Err(err) => println!("{}", err),
                             }
                         });
