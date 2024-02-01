@@ -204,8 +204,16 @@ impl AutoTrader {
 
             let mut indices: HashMap<String, [&Book; 4]> = HashMap::new();
             for book in self.books.values() {
+                let position = book.position.position;
                 if !enabled_books.contains_key(&book.product) {
-                    enabled_books.insert(book.product.clone(), true);
+                    enabled_books.insert(
+                        book.product.clone(),
+                        if position > 0 {
+                            position <= 1000
+                        } else {
+                            position > -1000
+                        },
+                    );
                 }
                 let mut orders_to_wait = orders_to_wait.lock().unwrap();
                 if !orders_to_wait.contains_key(&book.product) {
