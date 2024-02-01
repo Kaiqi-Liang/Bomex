@@ -96,6 +96,14 @@ impl ConstantPorts for AutoTrader {
     const HOSTNAME: &'static str = "sytev070";
 }
 
+trait PositionLimit {
+    const POSITION_LIMIT: i16;
+}
+
+impl PositionLimit for AutoTrader {
+    const POSITION_LIMIT: i16 = 1000;
+}
+
 impl AutoTrader {
     pub fn new(username: Username, password: String) -> AutoTrader {
         AutoTrader {
@@ -209,9 +217,9 @@ impl AutoTrader {
                     enabled_books.insert(
                         book.product.clone(),
                         if position > 0 {
-                            position <= 1000
+                            position <= AutoTrader::POSITION_LIMIT
                         } else {
-                            position > -1000
+                            position > -AutoTrader::POSITION_LIMIT
                         },
                     );
                 }
@@ -234,8 +242,8 @@ impl AutoTrader {
                         .expect("Book does not exist")
                         .position
                         .position;
-                    if position > 0 && position + order.volume > 1000
-                        || position < 0 && position - order.volume < -1000
+                    if position > 0 && position + order.volume > AutoTrader::POSITION_LIMIT
+                        || position < 0 && position - order.volume < -AutoTrader::POSITION_LIMIT
                     {
                         if let Some(enable) = enabled_books.get_mut(&order.product) {
                             *enable = false;
