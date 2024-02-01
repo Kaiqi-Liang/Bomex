@@ -27,6 +27,13 @@ impl Debug for Price {
     }
 }
 
+impl Sub for Price {
+    type Output = Price;
+    fn sub(self, rhs: Self) -> Self::Output {
+        self - to_underlying!(rhs)
+    }
+}
+
 impl Sub<u16> for Price {
     type Output = Price;
     fn sub(self, rhs: u16) -> Self::Output {

@@ -96,11 +96,7 @@ impl ConstantPorts for AutoTrader {
     const HOSTNAME: &'static str = "sytev070";
 }
 
-trait PositionLimit {
-    const POSITION_LIMIT: i16;
-}
-
-impl PositionLimit for AutoTrader {
+impl AutoTrader {
     const POSITION_LIMIT: i16 = 1000;
 }
 
@@ -219,7 +215,7 @@ impl AutoTrader {
                         if position > 0 {
                             position <= AutoTrader::POSITION_LIMIT
                         } else {
-                            position > -AutoTrader::POSITION_LIMIT
+                            position >= -AutoTrader::POSITION_LIMIT
                         },
                     );
                 }
@@ -245,6 +241,7 @@ impl AutoTrader {
                     if position > 0 && position + order.volume > AutoTrader::POSITION_LIMIT
                         || position < 0 && position - order.volume < -AutoTrader::POSITION_LIMIT
                     {
+                        // Disable the books that are about to go over position limit
                         if let Some(enable) = enabled_books.get_mut(&order.product) {
                             *enable = false;
                         }
