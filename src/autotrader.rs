@@ -269,21 +269,26 @@ impl AutoTrader {
                                         .text()
                                         .await
                                         .expect("Failed to parse add order response");
-                                    if let Ok(json) = from_str::<OrderAddedMessage>(&response) {
-                                        assert_eq!(
-                                            json.resting_volume, 0,
-                                            "For IOC orders there should be no resting volume",
-                                        );
-                                        if json.filled_volume != 0 {
-                                            orders_to_wait
-                                                .lock()
-                                                .unwrap()
-                                                .get_mut(&order.product)
-                                                .expect("Book does not exist")
-                                                .get_or_insert(json.order_id);
+                                    match from_str::<OrderAddedMessage>(&response) {
+                                        Ok(json) => {
+                                            assert_eq!(
+                                                json.resting, 0,
+                                                "For IOC orders there should be no resting volume",
+                                            );
+                                            if json.filled != 0 {
+                                                orders_to_wait
+                                                    .lock()
+                                                    .unwrap()
+                                                    .get_mut(&order.product)
+                                                    .expect("Book does not exist")
+                                                    .get_or_insert(json.id.clone());
+                                            }
+                                            #[cfg(debug_assertions)]
+                                            dbg!(json);
                                         }
-                                    } else {
-                                        dbg!(response);
+                                        Err(err) => {
+                                            dbg!(response, err);
+                                        }
                                     }
                                 }
                                 Err(err) => {

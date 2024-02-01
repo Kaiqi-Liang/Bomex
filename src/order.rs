@@ -16,16 +16,15 @@ pub struct AddMessage {
     pub order_type: OrderType,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Deserialize)]
 pub struct OrderAddedMessage {
-    pub order_id: String,
+    pub id: String,
     #[allow(unused)]
     side: Side,
     #[allow(unused)]
     price: Price,
-    pub filled_volume: Volume,
-    pub resting_volume: Volume,
+    pub filled: Volume,
+    pub resting: Volume,
     #[allow(unused)]
     owner: Username,
 }
