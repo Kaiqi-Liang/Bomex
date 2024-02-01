@@ -44,6 +44,29 @@ macro_rules! send_order {
     };
 }
 
+macro_rules! index_enabled {
+    ($index:ident, $enabled_books:ident, $orders_to_wait:ident) => {
+        $index.iter().all(|book| {
+            *$enabled_books
+                .get(&book.product)
+                .expect("Book does not exist")
+                && $orders_to_wait
+                    .lock()
+                    .unwrap()
+                    .get(&book.product)
+                    .expect("Book does not exist")
+                    .is_none()
+        })
+    };
+    ($index:ident, $enabled_books:ident) => {
+        $index.iter().all(|book| {
+            *$enabled_books
+                .get(&book.product)
+                .expect("Book does not exist")
+        })
+    };
+}
+
 macro_rules! get_book {
     ($books:expr, $message:ident) => {
         $books
@@ -192,6 +215,9 @@ impl AutoTrader {
                 entry[book.station_id as usize] = book;
             }
             for index in indices.values() {
+                if !index_enabled!(index, enabled_books, orders_to_wait) {
+                    continue;
+                }
                 let orders = find_arbs(index);
                 for order in orders.iter() {
                     let position = self.books.get(&order.product).expect("").position.position;
@@ -203,17 +229,7 @@ impl AutoTrader {
                         }
                     }
                 }
-                if index.iter().all(|book| {
-                    *enabled_books
-                        .get(&book.product)
-                        .expect("Book does not exist")
-                        && orders_to_wait
-                            .lock()
-                            .unwrap()
-                            .get(&book.product)
-                            .expect("Book does not exist")
-                            .is_none()
-                }) {
+                if index_enabled!(index, enabled_books) {
                     for order in orders {
                         let username = self.username.clone();
                         let password = self.password.clone();
