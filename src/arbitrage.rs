@@ -99,21 +99,6 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
         }
     }
     if index_volume != 0 && index_volume == underlying_volume {
-        for (i, price) in underlying_price.into_iter().enumerate() {
-            let book = index.get(i).expect("Book does not exist");
-            orders.push(AddMessage {
-                message_type: MessageType::Add,
-                product: book.product.clone(),
-                price,
-                side: if strategy == Strategy::BuyUnderlyingSellIndex {
-                    Side::Buy
-                } else {
-                    Side::Sell
-                },
-                volume: underlying_volume,
-                order_type: OrderType::Ioc,
-            });
-        }
         orders.push(AddMessage {
             message_type: MessageType::Add,
             product: index
@@ -130,6 +115,21 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
             volume: index_volume,
             order_type: OrderType::Ioc,
         });
+        for (i, price) in underlying_price.into_iter().enumerate() {
+            let book = index.get(i).expect("Book does not exist");
+            orders.push(AddMessage {
+                message_type: MessageType::Add,
+                product: book.product.clone(),
+                price,
+                side: if strategy == Strategy::BuyUnderlyingSellIndex {
+                    Side::Buy
+                } else {
+                    Side::Sell
+                },
+                volume: underlying_volume,
+                order_type: OrderType::Ioc,
+            });
+        }
     }
     orders
 }

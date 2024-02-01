@@ -122,10 +122,7 @@ impl AutoTrader {
             self.sequence = message.sequence();
             self.parse_feed_message(message);
         }
-        println!(
-            "Finished recovery with following active books: {:#?}",
-            self.books.keys(),
-        );
+        println!("Finished recovery books: {:#?}", self.books.keys());
 
         self.poll(stream.split().1).await?;
         Ok(())
