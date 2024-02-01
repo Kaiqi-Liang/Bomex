@@ -151,7 +151,7 @@ impl AutoTrader {
         &mut self,
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let enables: Arc<Mutex<HashMap<String, bool>>> = Arc::new(Mutex::new(HashMap::new()));
+        let mut enabled_books: HashMap<String, bool> = HashMap::new();
         let orders_to_wait: Arc<Mutex<HashMap<String, Option<String>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         while let Some(message) = stream.next().await {
@@ -181,9 +181,8 @@ impl AutoTrader {
 
             let mut indices: HashMap<String, [&Book; 4]> = HashMap::new();
             for book in self.books.values() {
-                let mut enables = enables.lock().unwrap();
-                if !enables.contains_key(&book.product) {
-                    enables.insert(book.product.clone(), true);
+                if !enabled_books.contains_key(&book.product) {
+                    enabled_books.insert(book.product.clone(), true);
                 }
                 let mut orders_to_wait = orders_to_wait.lock().unwrap();
                 if !orders_to_wait.contains_key(&book.product) {
@@ -193,10 +192,19 @@ impl AutoTrader {
                 entry[book.station_id as usize] = book;
             }
             for index in indices.values() {
+                let orders = find_arbs(index);
+                for order in orders.iter() {
+                    let position = self.books.get(&order.product).expect("").position.position;
+                    if position > 0 && position + order.volume > 1000
+                        || position < 0 && position - order.volume < -1000
+                    {
+                        if let Some(enable) = enabled_books.get_mut(&order.product) {
+                            *enable = false;
+                        }
+                    }
+                }
                 if index.iter().all(|book| {
-                    *enables
-                        .lock()
-                        .unwrap()
+                    *enabled_books
                         .get(&book.product)
                         .expect("Book does not exist")
                         && orders_to_wait
@@ -206,24 +214,11 @@ impl AutoTrader {
                             .expect("Book does not exist")
                             .is_none()
                 }) {
-                    let orders = find_arbs(index);
-                    for order in orders.iter() {
-                        let position = self.books.get(&order.product).expect("").position.position;
-                        if position > 0 && position + order.volume > 1000
-                            || position < 0 && position - order.volume < -1000
-                        {
-                            if let Some(enable) = enables.lock().unwrap().get_mut(&order.product) {
-                                *enable = false;
-                            }
-                        }
-                    }
                     for order in orders {
                         let username = self.username.clone();
                         let password = self.password.clone();
-                        let enables = enables.clone();
                         let orders_to_wait = orders_to_wait.clone();
                         spawn(async move {
-                            *enables.lock().unwrap().get_mut(&order.product).expect("") = false;
                             let result = send_order!(
                                 to_string(&username)
                                     .expect("Failed to conert username to string")
@@ -231,7 +226,6 @@ impl AutoTrader {
                                 password,
                                 order
                             );
-                            *enables.lock().unwrap().get_mut(&order.product).expect("") = true;
                             match result {
                                 Ok(response) => {
                                     if let std::result::Result::Ok(response) =
