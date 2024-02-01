@@ -272,6 +272,14 @@ mod tests {
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
+                    product: PRODUCT4.to_string(),
+                    price: Price(3200),
+                    side: Side::Sell,
+                    volume: Volume(5),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
                     product: PRODUCT1.to_string(),
                     price: Price(1200),
                     side: Side::Buy,
@@ -291,14 +299,6 @@ mod tests {
                     product: PRODUCT3.to_string(),
                     price: Price(600),
                     side: Side::Buy,
-                    volume: Volume(5),
-                    order_type: OrderType::Ioc,
-                },
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: PRODUCT4.to_string(),
-                    price: Price(3200),
-                    side: Side::Sell,
                     volume: Volume(5),
                     order_type: OrderType::Ioc,
                 },
@@ -360,6 +360,14 @@ mod tests {
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
+                    product: PRODUCT4.to_string(),
+                    price: Price(3200),
+                    side: Side::Sell,
+                    volume: Volume(5),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
                     product: PRODUCT1.to_string(),
                     price: Price(1200),
                     side: Side::Buy,
@@ -379,14 +387,6 @@ mod tests {
                     product: PRODUCT3.to_string(),
                     price: Price(600),
                     side: Side::Buy,
-                    volume: Volume(5),
-                    order_type: OrderType::Ioc,
-                },
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: PRODUCT4.to_string(),
-                    price: Price(3200),
-                    side: Side::Sell,
                     volume: Volume(5),
                     order_type: OrderType::Ioc,
                 },
@@ -444,6 +444,14 @@ mod tests {
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
+                    product: PRODUCT4.to_string(),
+                    price: Price(3200),
+                    side: Side::Sell,
+                    volume: Volume(5),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
                     product: PRODUCT1.to_string(),
                     price: Price(1200),
                     side: Side::Buy,
@@ -463,14 +471,6 @@ mod tests {
                     product: PRODUCT3.to_string(),
                     price: Price(600),
                     side: Side::Buy,
-                    volume: Volume(5),
-                    order_type: OrderType::Ioc,
-                },
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: PRODUCT4.to_string(),
-                    price: Price(3200),
-                    side: Side::Sell,
                     volume: Volume(5),
                     order_type: OrderType::Ioc,
                 },
@@ -531,6 +531,14 @@ mod tests {
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
+                    product: PRODUCT4.to_string(),
+                    price: Price(3400),
+                    side: Side::Sell,
+                    volume: Volume(4),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
                     product: PRODUCT1.to_string(),
                     price: Price(1100),
                     side: Side::Buy,
@@ -550,14 +558,6 @@ mod tests {
                     product: PRODUCT3.to_string(),
                     price: Price(600),
                     side: Side::Buy,
-                    volume: Volume(4),
-                    order_type: OrderType::Ioc,
-                },
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: PRODUCT4.to_string(),
-                    price: Price(3400),
-                    side: Side::Sell,
                     volume: Volume(4),
                     order_type: OrderType::Ioc,
                 },
@@ -614,6 +614,14 @@ mod tests {
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
+                    product: PRODUCT4.to_string(),
+                    price: Price(3400),
+                    side: Side::Sell,
+                    volume: Volume(4),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
                     product: PRODUCT1.to_string(),
                     price: Price(1100),
                     side: Side::Buy,
@@ -633,14 +641,6 @@ mod tests {
                     product: PRODUCT3.to_string(),
                     price: Price(600),
                     side: Side::Buy,
-                    volume: Volume(4),
-                    order_type: OrderType::Ioc,
-                },
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: PRODUCT4.to_string(),
-                    price: Price(3400),
-                    side: Side::Sell,
                     volume: Volume(4),
                     order_type: OrderType::Ioc,
                 },
@@ -698,6 +698,14 @@ mod tests {
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
+                    product: PRODUCT4.to_string(),
+                    price: Price(1200),
+                    side: Side::Buy,
+                    volume: Volume(1),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
                     product: PRODUCT1.to_string(),
                     price: Price(700),
                     side: Side::Sell,
@@ -717,14 +725,6 @@ mod tests {
                     product: PRODUCT3.to_string(),
                     price: Price(500),
                     side: Side::Sell,
-                    volume: Volume(1),
-                    order_type: OrderType::Ioc,
-                },
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: PRODUCT4.to_string(),
-                    price: Price(1200),
-                    side: Side::Buy,
                     volume: Volume(1),
                     order_type: OrderType::Ioc,
                 },
@@ -782,6 +782,14 @@ mod tests {
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
+                    product: PRODUCT4.to_string(),
+                    price: Price(1000),
+                    side: Side::Buy,
+                    volume: Volume(9),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
                     product: PRODUCT1.to_string(),
                     price: Price(700),
                     side: Side::Sell,
@@ -801,14 +809,6 @@ mod tests {
                     product: PRODUCT3.to_string(),
                     price: Price(300),
                     side: Side::Sell,
-                    volume: Volume(9),
-                    order_type: OrderType::Ioc,
-                },
-                AddMessage {
-                    message_type: MessageType::Add,
-                    product: PRODUCT4.to_string(),
-                    price: Price(1000),
-                    side: Side::Buy,
                     volume: Volume(9),
                     order_type: OrderType::Ioc,
                 },
