@@ -100,6 +100,12 @@ impl PartialEq for Volume {
     }
 }
 
+impl PartialOrd<u16> for Volume {
+    fn partial_cmp(&self, other: &u16) -> Option<std::cmp::Ordering> {
+        Some(to_underlying!(self).cmp(other))
+    }
+}
+
 impl PartialEq<u16> for Volume {
     fn eq(&self, other: &u16) -> bool {
         to_underlying!(self) == *other

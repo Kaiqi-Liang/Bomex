@@ -93,7 +93,7 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
                     break;
                 }
             } else {
-                // no more arbs
+                // No more arbs
                 break 'outer;
             }
         }

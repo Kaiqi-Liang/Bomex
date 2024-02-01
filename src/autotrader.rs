@@ -1,9 +1,12 @@
 use crate::{
-    arbitrage::find_arbs, book::Book, feed::HasSequence, order::OrderAddedMessage,
+    arbitrage::find_arbs,
+    book::Book,
+    feed::{HasSequence, Message},
+    order::OrderAddedMessage,
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
-use serde_json::{from_str, to_string};
+use serde_json::{from_slice, from_str, to_string};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -45,22 +48,21 @@ macro_rules! send_order {
 }
 
 macro_rules! index_enabled {
-    ($index:ident, $enabled_books:ident, $orders_to_wait:ident) => {
+    ($index:ident, $enabled_books:expr, $orders_to_wait:ident) => {
         $index.iter().all(|book| {
             *$enabled_books
+                .lock()
+                .unwrap()
                 .get(&book.product)
                 .expect("Book does not exist")
-                && $orders_to_wait
-                    .lock()
-                    .unwrap()
-                    .get(&book.product)
-                    .expect("Book does not exist")
-                    .is_none()
+                && $orders_to_wait.lock().unwrap().get(&book.product).is_none()
         })
     };
-    ($index:ident, $enabled_books:ident) => {
+    ($index:ident, $enabled_books:expr) => {
         $index.iter().all(|book| {
             *$enabled_books
+                .lock()
+                .unwrap()
                 .get(&book.product)
                 .expect("Book does not exist")
         })
@@ -117,11 +119,10 @@ impl AutoTrader {
                 .expect("Failed to connect to the websocket");
         println!("Server responded with headers: {:?}", response.headers());
 
-        let messages: Vec<crate::feed::Message> =
-            reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
-                .await?
-                .json()
-                .await?;
+        let messages: Vec<Message> = reqwest::get(url!(AutoTrader::FEED_RECOVERY_PORT, "recover"))
+            .await?
+            .json()
+            .await?;
         for message in messages {
             self.sequence = message.sequence();
             self.parse_feed_message(message);
@@ -133,11 +134,11 @@ impl AutoTrader {
     }
 
     /// Outbound decoder for feed
-    fn parse_feed_message(&mut self, message: crate::feed::Message) {
+    fn parse_feed_message(&mut self, message: Message) {
         #[cfg(debug_assertions)]
         dbg!(&message);
         match message {
-            crate::feed::Message::Future(future) => {
+            Message::Future(future) => {
                 assert_eq!(
                     future.expiry, future.halt_time,
                     "Expiry time should be the same as halt time",
@@ -147,25 +148,25 @@ impl AutoTrader {
                     Book::new(future.product, future.station_id, future.expiry),
                 );
             }
-            crate::feed::Message::Added(added) => {
+            Message::Added(added) => {
                 get_book!(self.books, added).add_order(added, &self.username);
             }
-            crate::feed::Message::Deleted(deleted) => {
+            Message::Deleted(deleted) => {
                 get_book!(self.books, deleted).remove_order(deleted, &self.username);
             }
-            crate::feed::Message::Trade(trade) => {
+            Message::Trade(trade) => {
                 get_book!(self.books, trade).trade(trade, &self.username);
             }
-            crate::feed::Message::Settlement(settlement) => {
+            Message::Settlement(settlement) => {
                 println!(
                     "Book {} settles at {:?}",
                     settlement.product, settlement.price,
                 );
             }
-            crate::feed::Message::Index(index) => {
+            Message::Index(index) => {
                 println!("Index definition: {index:#?}");
             }
-            crate::feed::Message::TradingHalt(halt) => {
+            Message::TradingHalt(halt) => {
                 self.books.remove(&halt.product);
             }
         }
@@ -175,25 +176,20 @@ impl AutoTrader {
         &mut self,
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut enabled_books: HashMap<String, bool> = HashMap::new();
-        let orders_to_wait: Arc<Mutex<HashMap<String, Option<String>>>> =
+        let enabled_books = Arc::new(Mutex::new(HashMap::new()));
+        let orders_to_wait: Arc<Mutex<HashMap<String, String>>> =
             Arc::new(Mutex::new(HashMap::new()));
         while let Some(message) = stream.next().await {
-            let message: crate::feed::Message = serde_json::from_slice(&message?.into_data())?;
+            let message: Message = from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
             #[allow(clippy::comparison_chain)]
             if message.sequence() == next_sequence {
                 self.sequence = next_sequence;
-                if let crate::feed::Message::Trade(ref trade) = message {
+                if let Message::Trade(ref trade) = message {
                     let mut orders_to_wait = orders_to_wait.lock().unwrap();
-                    if let Some(order_id) = orders_to_wait
-                        .get(&trade.product)
-                        .expect("Book does not exist")
-                    {
+                    if let Some(order_id) = orders_to_wait.get(&trade.product) {
                         if trade.aggressor_order == order_id.clone() {
-                            orders_to_wait
-                                .entry(trade.product.to_owned())
-                                .and_modify(|orders_to_wait| *orders_to_wait = None);
+                            orders_to_wait.remove(&trade.product);
                         }
                     }
                 }
@@ -209,6 +205,7 @@ impl AutoTrader {
             let mut indices: HashMap<String, [&Book; 4]> = HashMap::new();
             for book in self.books.values() {
                 let position = book.position.position;
+                let mut enabled_books = enabled_books.lock().unwrap();
                 if !enabled_books.contains_key(&book.product) {
                     enabled_books.insert(
                         book.product.clone(),
@@ -218,10 +215,6 @@ impl AutoTrader {
                             position >= -AutoTrader::POSITION_LIMIT
                         },
                     );
-                }
-                let mut orders_to_wait = orders_to_wait.lock().unwrap();
-                if !orders_to_wait.contains_key(&book.product) {
-                    orders_to_wait.insert(book.product.clone(), None);
                 }
                 let entry = indices.entry(book.expiry.clone()).or_insert([&book; 4]);
                 entry[book.station_id as usize] = book;
@@ -242,16 +235,24 @@ impl AutoTrader {
                         || position < 0 && position - order.volume < -AutoTrader::POSITION_LIMIT
                     {
                         // Disable the books that are about to go over position limit
-                        if let Some(enable) = enabled_books.get_mut(&order.product) {
+                        if let Some(enable) = enabled_books.lock().unwrap().get_mut(&order.product)
+                        {
                             *enable = false;
                         }
                     }
                 }
                 if index_enabled!(index, enabled_books) {
                     for order in orders {
+                        // Disable the books where an order is about to be sent
+                        enabled_books
+                            .lock()
+                            .unwrap()
+                            .entry(order.product.clone())
+                            .and_modify(|enabled| *enabled = false);
                         let username = self.username.clone();
                         let password = self.password.clone();
                         let orders_to_wait = orders_to_wait.clone();
+                        let enabled_books = enabled_books.clone();
                         spawn(async move {
                             let result = send_order!(
                                 to_string(&username)
@@ -272,13 +273,12 @@ impl AutoTrader {
                                                 json.resting, 0,
                                                 "For IOC orders there should be no resting volume",
                                             );
-                                            if json.filled != 0 {
+                                            if json.filled > 0 {
+                                                // Insert the book ID associated with the order ID if an order has been filled
                                                 orders_to_wait
                                                     .lock()
                                                     .unwrap()
-                                                    .get_mut(&order.product)
-                                                    .expect("Book does not exist")
-                                                    .get_or_insert(json.id.clone());
+                                                    .insert(order.product.clone(), json.id.clone());
                                             }
                                             #[cfg(debug_assertions)]
                                             dbg!(json);
@@ -292,6 +292,12 @@ impl AutoTrader {
                                     dbg!(err);
                                 }
                             }
+                            // Reenable book after receiving a response and setting orders to wait
+                            enabled_books
+                                .lock()
+                                .unwrap()
+                                .entry(order.product.clone())
+                                .and_modify(|enabled| *enabled = false);
                         });
                     }
                 }
@@ -1137,7 +1143,7 @@ mod tests {
             )]),
         );
 
-        // wash trade
+        // Wash trade
         parse_json!(trader, {
             "type": "TRADE",
             "product": PRODUCT,
@@ -1152,7 +1158,7 @@ mod tests {
             "sequence": 11
         });
 
-        // leftover volume on orderbook
+        // Leftover volume on orderbook
         parse_json!(trader, {
             "type": "TRADE",
             "product": PRODUCT,

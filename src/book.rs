@@ -38,7 +38,7 @@ impl From<AddedMessage> for Order {
 pub struct Position {
     pub bid_exposure: Volume,
     pub ask_exposure: Volume,
-    /// current traded position in the book, positive for long negative for short
+    /// Current traded position in the book, positive for long negative for short
     pub position: i16,
 }
 
