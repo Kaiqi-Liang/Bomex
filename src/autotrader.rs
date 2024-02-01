@@ -1,16 +1,12 @@
 use crate::{
-    arbitrage::find_arbs,
     book::Book,
-    feed::HasSequence,
+    feed::{HasSequence, Message},
     order::{AddMessage, MessageType, OrderAddedMessage, OrderType},
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
 use serde_json::{from_slice, from_str, to_string};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
 use tokio::{net::TcpStream, spawn};
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
@@ -44,28 +40,6 @@ macro_rules! send_order {
             ])
             .send()
             .await
-    };
-}
-
-macro_rules! index_enabled {
-    ($index:ident, $enabled_books:expr, $orders_to_wait:ident) => {
-        $index.iter().all(|book| {
-            *$enabled_books
-                .lock()
-                .unwrap()
-                .get(&book.product)
-                .expect("Book does not exist")
-                && $orders_to_wait.lock().unwrap().get(&book.product).is_none()
-        })
-    };
-    ($index:ident, $enabled_books:expr) => {
-        $index.iter().all(|book| {
-            *$enabled_books
-                .lock()
-                .unwrap()
-                .get(&book.product)
-                .expect("Book does not exist")
-        })
     };
 }
 
@@ -182,12 +156,16 @@ impl AutoTrader {
             #[allow(clippy::comparison_chain)]
             if message.sequence() == next_sequence {
                 self.sequence = next_sequence;
-                match message.clone() {
-                    crate::feed::Message::Future(_) => todo!(),
-                    crate::feed::Message::Added(added) => {
-                        if added.owner == Username::PRao {
-                            let username = self.username.clone();
-                            let password = self.password.clone();
+                self.parse_feed_message(message.clone());
+                if let Message::Added(added) = message {
+                    if added.owner == Username::WBarnett {
+                        let username = self.username.clone();
+                        let password = self.password.clone();
+                        let position = self.books.get(&added.product).unwrap().position.position;
+                        if position > 0 && position + added.resting > AutoTrader::POSITION_LIMIT
+                            || position < 0
+                                && position - added.resting < -AutoTrader::POSITION_LIMIT
+                        {
                             spawn(async move {
                                 let result = send_order!(
                                     to_string(&username)
@@ -225,132 +203,13 @@ impl AutoTrader {
                             });
                         }
                     }
-                    crate::feed::Message::Deleted(_) => todo!(),
-                    crate::feed::Message::Trade(trade) => {
-                        let mut orders_to_wait = orders_to_wait.lock().unwrap();
-                        if let Some(order_id) = orders_to_wait
-                            .get(&trade.product)
-                            .expect("Book does not exist")
-                        {
-                            if trade.aggressor_order == order_id.clone() {
-                                orders_to_wait
-                                    .entry(trade.product.to_owned())
-                                    .and_modify(|orders_to_wait| *orders_to_wait = None);
-                            }
-                        }
-                    }
-                    crate::feed::Message::Settlement(_) => todo!(),
-                    crate::feed::Message::Index(_) => todo!(),
-                    crate::feed::Message::TradingHalt(_) => todo!(),
                 }
-                self.parse_feed_message(message);
             } else if message.sequence() > next_sequence {
                 panic!(
                     "Expecting sequence number {} but got {}",
                     next_sequence,
                     message.sequence(),
                 );
-            }
-
-            let mut indices: HashMap<String, [&Book; 4]> = HashMap::new();
-            for book in self.books.values() {
-                let position = book.position.position;
-                let mut enabled_books = enabled_books.lock().unwrap();
-                if !enabled_books.contains_key(&book.product) {
-                    enabled_books.insert(
-                        book.product.clone(),
-                        if position > 0 {
-                            position <= AutoTrader::POSITION_LIMIT
-                        } else {
-                            position >= -AutoTrader::POSITION_LIMIT
-                        },
-                    );
-                }
-                let entry = indices.entry(book.expiry.clone()).or_insert([&book; 4]);
-                entry[book.station_id as usize] = book;
-            }
-            for index in indices.values() {
-                if !index_enabled!(index, enabled_books, orders_to_wait) {
-                    continue;
-                }
-                let orders = find_arbs(index);
-                for order in orders.iter() {
-                    let position = self
-                        .books
-                        .get(&order.product)
-                        .expect("Book does not exist")
-                        .position
-                        .position;
-                    if position > 0 && position + order.volume > AutoTrader::POSITION_LIMIT
-                        || position < 0 && position - order.volume < -AutoTrader::POSITION_LIMIT
-                    {
-                        // Disable the books that are about to go over position limit
-                        if let Some(enable) = enabled_books.lock().unwrap().get_mut(&order.product)
-                        {
-                            *enable = false;
-                        }
-                    }
-                }
-                if index_enabled!(index, enabled_books) {
-                    for order in orders {
-                        // Disable the books where an order is about to be sent
-                        enabled_books
-                            .lock()
-                            .unwrap()
-                            .entry(order.product.clone())
-                            .and_modify(|enabled| *enabled = false);
-                        let username = self.username.clone();
-                        let password = self.password.clone();
-                        let orders_to_wait = orders_to_wait.clone();
-                        let enabled_books = enabled_books.clone();
-                        spawn(async move {
-                            let result = send_order!(
-                                to_string(&username)
-                                    .expect("Failed to convert username to string")
-                                    .trim_matches('"'),
-                                password,
-                                order
-                            );
-                            match result {
-                                Ok(response) => {
-                                    let response = response
-                                        .text()
-                                        .await
-                                        .expect("Failed to parse add order response");
-                                    match from_str::<OrderAddedMessage>(&response) {
-                                        Ok(json) => {
-                                            assert_eq!(
-                                                json.resting, 0,
-                                                "For IOC orders there should be no resting volume",
-                                            );
-                                            if json.filled > 0 {
-                                                // Insert the book ID associated with the order ID if an order has been filled
-                                                orders_to_wait
-                                                    .lock()
-                                                    .unwrap()
-                                                    .insert(order.product.clone(), json.id.clone());
-                                            }
-                                            #[cfg(debug_assertions)]
-                                            dbg!(json);
-                                        }
-                                        Err(err) => {
-                                            dbg!(response, err);
-                                        }
-                                    }
-                                }
-                                Err(err) => {
-                                    dbg!(err);
-                                }
-                            }
-                            // Reenable book after receiving a response and setting orders to wait
-                            enabled_books
-                                .lock()
-                                .unwrap()
-                                .entry(order.product.clone())
-                                .and_modify(|enabled| *enabled = false);
-                        });
-                    }
-                }
             }
         }
         Ok(())

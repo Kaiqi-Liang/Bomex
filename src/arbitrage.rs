@@ -134,6 +134,7 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
     orders
 }
 
+#[allow(unused)]
 pub fn find_arbs(index: &[&Book; 4]) -> Vec<AddMessage> {
     let mut orders = find_arbs_for_side(index, Strategy::BuyUnderlyingSellIndex);
     if orders.is_empty() {
