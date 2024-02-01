@@ -3,7 +3,7 @@ use crate::{
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
-use serde_json::to_string;
+use serde_json::{from_str, to_string};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -36,7 +36,7 @@ macro_rules! send_order {
                 ("password", &$password),
                 (
                     "message",
-                    &to_string(&$message).expect("Serialization of AddMessage should not fail"),
+                    &to_string(&$message).expect("Failed to serializase AddMessage"),
                 ),
             ])
             .send()
@@ -71,7 +71,7 @@ macro_rules! get_book {
     ($books:expr, $message:ident) => {
         $books
             .get_mut(&$message.product)
-            .expect("Product is not in the books")
+            .expect("Book does not exist")
     };
 }
 
@@ -182,7 +182,10 @@ impl AutoTrader {
                 self.sequence = next_sequence;
                 if let crate::feed::Message::Trade(ref trade) = message {
                     let mut orders_to_wait = orders_to_wait.lock().unwrap();
-                    if let Some(order_id) = orders_to_wait.get(&trade.product).expect("") {
+                    if let Some(order_id) = orders_to_wait
+                        .get(&trade.product)
+                        .expect("Book does not exist")
+                    {
                         if trade.aggressor_order == order_id.clone() {
                             orders_to_wait
                                 .entry(trade.product.to_owned())
@@ -225,7 +228,12 @@ impl AutoTrader {
                 }
                 let orders = find_arbs(index);
                 for order in orders.iter() {
-                    let position = self.books.get(&order.product).expect("").position.position;
+                    let position = self
+                        .books
+                        .get(&order.product)
+                        .expect("Book does not exist")
+                        .position
+                        .position;
                     if position > 0 && position + order.volume > 1000
                         || position < 0 && position - order.volume < -1000
                     {
@@ -242,30 +250,37 @@ impl AutoTrader {
                         spawn(async move {
                             let result = send_order!(
                                 to_string(&username)
-                                    .expect("Failed to conert username to string")
+                                    .expect("Failed to convert username to string")
                                     .trim_matches('"'),
                                 password,
                                 order
                             );
                             match result {
                                 Ok(response) => {
-                                    if let std::result::Result::Ok(response) =
-                                        response.json::<OrderAddedMessage>().await
-                                    {
+                                    let response = response
+                                        .text()
+                                        .await
+                                        .expect("Failed to parse add order response");
+                                    if let Ok(json) = from_str::<OrderAddedMessage>(&response) {
                                         assert_eq!(
-                                            response.resting_volume, 0,
-                                            "For IOC orders there should be no resting volume"
+                                            json.resting_volume, 0,
+                                            "For IOC orders there should be no resting volume",
                                         );
-                                        if response.filled_volume != 0 {
-                                            *orders_to_wait
+                                        if json.filled_volume != 0 {
+                                            orders_to_wait
                                                 .lock()
                                                 .unwrap()
                                                 .get_mut(&order.product)
-                                                .expect("") = Some(response.order_id);
+                                                .expect("Book does not exist")
+                                                .get_or_insert(json.order_id);
                                         }
+                                    } else {
+                                        dbg!(response);
                                     }
                                 }
-                                Err(err) => println!("{}", err),
+                                Err(err) => {
+                                    dbg!(err);
+                                }
                             }
                         });
                     }
