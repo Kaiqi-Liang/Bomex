@@ -1,8 +1,8 @@
 use crate::{
     arbitrage::find_arbs,
     book::Book,
-    feed::{HasSequence, Message},
-    order::OrderAddedMessage,
+    feed::HasSequence,
+    order::{AddMessage, MessageType, OrderAddedMessage, OrderType},
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
@@ -176,22 +176,72 @@ impl AutoTrader {
         &mut self,
         mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let enabled_books = Arc::new(Mutex::new(HashMap::new()));
-        let orders_to_wait: Arc<Mutex<HashMap<String, String>>> =
-            Arc::new(Mutex::new(HashMap::new()));
         while let Some(message) = stream.next().await {
             let message: Message = from_slice(&message?.into_data())?;
             let next_sequence = self.sequence + 1;
             #[allow(clippy::comparison_chain)]
             if message.sequence() == next_sequence {
                 self.sequence = next_sequence;
-                if let Message::Trade(ref trade) = message {
-                    let mut orders_to_wait = orders_to_wait.lock().unwrap();
-                    if let Some(order_id) = orders_to_wait.get(&trade.product) {
-                        if trade.aggressor_order == order_id.clone() {
-                            orders_to_wait.remove(&trade.product);
+                match message.clone() {
+                    crate::feed::Message::Future(_) => todo!(),
+                    crate::feed::Message::Added(added) => {
+                        if added.owner == Username::PRao {
+                            let username = self.username.clone();
+                            let password = self.password.clone();
+                            spawn(async move {
+                                let result = send_order!(
+                                    to_string(&username)
+                                        .expect("Failed to convert username to string")
+                                        .trim_matches('"'),
+                                    password,
+                                    AddMessage {
+                                        message_type: MessageType::Add,
+                                        product: added.product.clone(),
+                                        price: added.price,
+                                        side: added.side.clone(),
+                                        volume: added.resting,
+                                        order_type: OrderType::Day,
+                                    }
+                                );
+                                match result {
+                                    Ok(response) => {
+                                        let response = response
+                                            .text()
+                                            .await
+                                            .expect("Failed to parse add order response");
+                                        match from_str::<OrderAddedMessage>(&response) {
+                                            Ok(json) => {
+                                                dbg!(json);
+                                            }
+                                            Err(err) => {
+                                                dbg!(response, err);
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        dbg!(err);
+                                    }
+                                }
+                            });
                         }
                     }
+                    crate::feed::Message::Deleted(_) => todo!(),
+                    crate::feed::Message::Trade(trade) => {
+                        let mut orders_to_wait = orders_to_wait.lock().unwrap();
+                        if let Some(order_id) = orders_to_wait
+                            .get(&trade.product)
+                            .expect("Book does not exist")
+                        {
+                            if trade.aggressor_order == order_id.clone() {
+                                orders_to_wait
+                                    .entry(trade.product.to_owned())
+                                    .and_modify(|orders_to_wait| *orders_to_wait = None);
+                            }
+                        }
+                    }
+                    crate::feed::Message::Settlement(_) => todo!(),
+                    crate::feed::Message::Index(_) => todo!(),
+                    crate::feed::Message::TradingHalt(_) => todo!(),
                 }
                 self.parse_feed_message(message);
             } else if message.sequence() > next_sequence {

@@ -9,7 +9,7 @@ pub trait HasSequence {
     fn sequence(&self) -> u32;
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE", tag = "type")]
 pub enum Message {
     Future(FutureMessage),
@@ -35,7 +35,7 @@ impl HasSequence for Message {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FutureMessage {
     pub product: String,
@@ -46,7 +46,7 @@ pub struct FutureMessage {
     pub sequence: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct AddedMessage {
     pub product: String,
     pub id: String,
@@ -58,7 +58,7 @@ pub struct AddedMessage {
     pub sequence: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DeletedMessage {
     pub product: String,
     pub id: String,
@@ -66,7 +66,7 @@ pub struct DeletedMessage {
     pub sequence: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TradeMessage {
     pub product: String,
@@ -81,7 +81,7 @@ pub struct TradeMessage {
     pub sequence: u32,
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TradeType {
     SellAggressor,
@@ -89,7 +89,7 @@ pub enum TradeType {
     BrokerTrade,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettlementMessage {
     pub product: String,
@@ -99,7 +99,7 @@ pub struct SettlementMessage {
     pub sequence: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(unused)]
 pub struct IndexMessage {
@@ -118,7 +118,7 @@ where
     Ok(ids.into_iter().map(Station::from).collect())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct TradingHaltMessage {
     pub product: String,
     pub sequence: u32,
