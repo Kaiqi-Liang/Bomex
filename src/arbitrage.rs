@@ -79,6 +79,14 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
                     Ordering::Greater
                 }
             {
+                let credit = Price(5);
+                if strategy == Strategy::BuyIndexSellUnderlying
+                    && index_theo.theo.price - index_theo.index.price < credit
+                    || strategy == Strategy::BuyUnderlyingSellIndex
+                        && index_theo.index.price - index_theo.theo.price < credit
+                {
+                    break 'outer;
+                }
                 index_price = index_theo.index.price;
                 let index_min_volume = Volume::min(index_theo.theo.volume, index_theo.index.volume);
                 index_volume += index_min_volume;
@@ -99,6 +107,7 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
         }
     }
     if index_volume != 0 && index_volume == underlying_volume {
+        let volume = index_volume.min(Volume(100)); // Cap arbs volume at 100
         orders.push(AddMessage {
             message_type: MessageType::Add,
             product: index
@@ -112,7 +121,7 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
             } else {
                 Side::Buy
             },
-            volume: index_volume,
+            volume,
             order_type: OrderType::Ioc,
         });
         for (i, price) in underlying_price.into_iter().enumerate() {
@@ -126,7 +135,7 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
                 } else {
                     Side::Sell
                 },
-                volume: underlying_volume,
+                volume,
                 order_type: OrderType::Ioc,
             });
         }
