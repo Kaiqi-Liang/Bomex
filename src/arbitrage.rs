@@ -249,6 +249,61 @@ mod tests {
     }
 
     #[test]
+    fn test_buy_underlying_sell_index_not_enough_credit() {
+        let books = [
+            Book {
+                bids: BTreeMap::new(),
+                asks: BTreeMap::from([(Price(1100), Volume(4)), (Price(1200), Volume(25))]),
+                orders: HashMap::new(),
+                position: Position::default(),
+                product: PRODUCT1.to_string(),
+                station_id: Station::SydAirport,
+                expiry: EXPIRY.to_string(),
+            },
+            Book {
+                bids: BTreeMap::new(),
+                asks: BTreeMap::from([(Price(1300), Volume(20))]),
+                orders: HashMap::new(),
+                position: Position::default(),
+                product: PRODUCT2.to_string(),
+                station_id: Station::SydOlympicPark,
+                expiry: EXPIRY.to_string(),
+            },
+            Book {
+                bids: BTreeMap::new(),
+                asks: BTreeMap::from([
+                    (Price(500), Volume(2)),
+                    (Price(600), Volume(3)),
+                    (Price(700), Volume(5)),
+                ]),
+                orders: HashMap::new(),
+                position: Position::default(),
+                product: PRODUCT3.to_string(),
+                station_id: Station::CanberraAirport,
+                expiry: EXPIRY.to_string(),
+            },
+            Book {
+                bids: BTreeMap::from([
+                    (Price(3500), Volume(1)),
+                    (Price(3400), Volume(3)),
+                    (Price(3200), Volume(20)),
+                    (Price(3000), Volume(3)),
+                ]),
+                asks: BTreeMap::new(),
+                orders: HashMap::new(),
+                position: Position::default(),
+                product: PRODUCT4.to_string(),
+                station_id: Station::Index,
+                expiry: EXPIRY.to_string(),
+            },
+        ];
+        assert_eq!(
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(600)),
+            vec![],
+        );
+    }
+
+    #[test]
     fn test_buy_underlying_sell_index_other_side_empty() {
         let books = [
             Book {
@@ -337,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn test_buy_underlying_sell_index_not_enough_credit() {
+    fn test_buy_underlying_sell_index_higher_credit() {
         let books = [
             Book {
                 bids: BTreeMap::new(),
