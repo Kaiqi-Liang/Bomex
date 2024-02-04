@@ -18,7 +18,7 @@ enum Strategy {
     BuyUnderlyingSellIndex,
 }
 
-fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage> {
+fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy, credit: Price) -> Vec<AddMessage> {
     let mut orders = Vec::new();
     let mut underlying_level = [PriceLevel::default(); 3];
     let mut index_volume = Volume::default();
@@ -79,12 +79,12 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
                     Ordering::Greater
                 }
             {
-                let credit = Price(5);
                 if strategy == Strategy::BuyIndexSellUnderlying
-                    && index_theo.theo.price - index_theo.index.price < credit
+                    && index_theo.theo.price - index_theo.index.price <= credit
                     || strategy == Strategy::BuyUnderlyingSellIndex
-                        && index_theo.index.price - index_theo.theo.price < credit
+                        && index_theo.index.price - index_theo.theo.price <= credit
                 {
+                    // Not enough credit
                     break 'outer;
                 }
                 index_price = index_theo.index.price;
@@ -106,7 +106,28 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
             }
         }
     }
-    if index_volume != 0 && index_volume == underlying_volume {
+    assert_eq!(
+        index_volume, underlying_volume,
+        "Arbs must have the same volume",
+    );
+    if index_volume != 0 {
+        let theo_price = underlying_price
+            .iter()
+            .fold(Price::default(), |acc, &price| acc + price);
+        match strategy {
+            Strategy::BuyIndexSellUnderlying => {
+                assert!(
+                    theo_price > index_price,
+                    "Must be selling the underlying at a higher price than buying the index",
+                );
+            }
+            Strategy::BuyUnderlyingSellIndex => {
+                assert!(
+                    index_price > theo_price,
+                    "Must be selling the index at a higher price than buying the underlying",
+                );
+            }
+        }
         let volume = index_volume.min(Volume(100)); // Cap arbs volume at 100
         orders.push(AddMessage {
             message_type: MessageType::Add,
@@ -143,10 +164,10 @@ fn find_arbs_for_side(index: &[&Book; 4], strategy: Strategy) -> Vec<AddMessage>
     orders
 }
 
-pub fn find_arbs(index: &[&Book; 4]) -> Vec<AddMessage> {
-    let mut orders = find_arbs_for_side(index, Strategy::BuyUnderlyingSellIndex);
+pub fn find_arbs(index: &[&Book; 4], credit: Price) -> Vec<AddMessage> {
+    let mut orders = find_arbs_for_side(index, Strategy::BuyUnderlyingSellIndex, credit);
     if orders.is_empty() {
-        orders = find_arbs_for_side(index, Strategy::BuyIndexSellUnderlying);
+        orders = find_arbs_for_side(index, Strategy::BuyIndexSellUnderlying, credit);
     }
     orders
 }
@@ -171,7 +192,7 @@ mod tests {
             Book::default(),
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![],
         );
     }
@@ -222,7 +243,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![],
         );
     }
@@ -277,7 +298,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -309,6 +330,94 @@ mod tests {
                     price: Price(600),
                     side: Side::Buy,
                     volume: Volume(5),
+                    order_type: OrderType::Ioc,
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn test_buy_underlying_sell_index_not_enough_credit() {
+        let books = [
+            Book {
+                bids: BTreeMap::new(),
+                asks: BTreeMap::from([(Price(1100), Volume(4)), (Price(1200), Volume(25))]),
+                orders: HashMap::new(),
+                position: Position::default(),
+                product: PRODUCT1.to_string(),
+                station_id: Station::SydAirport,
+                expiry: EXPIRY.to_string(),
+            },
+            Book {
+                bids: BTreeMap::new(),
+                asks: BTreeMap::from([(Price(1300), Volume(20))]),
+                orders: HashMap::new(),
+                position: Position::default(),
+                product: PRODUCT2.to_string(),
+                station_id: Station::SydOlympicPark,
+                expiry: EXPIRY.to_string(),
+            },
+            Book {
+                bids: BTreeMap::new(),
+                asks: BTreeMap::from([
+                    (Price(500), Volume(2)),
+                    (Price(600), Volume(3)),
+                    (Price(700), Volume(5)),
+                ]),
+                orders: HashMap::new(),
+                position: Position::default(),
+                product: PRODUCT3.to_string(),
+                station_id: Station::CanberraAirport,
+                expiry: EXPIRY.to_string(),
+            },
+            Book {
+                bids: BTreeMap::from([
+                    (Price(3500), Volume(1)),
+                    (Price(3400), Volume(3)),
+                    (Price(3200), Volume(20)),
+                    (Price(3000), Volume(3)),
+                ]),
+                asks: BTreeMap::new(),
+                orders: HashMap::new(),
+                position: Position::default(),
+                product: PRODUCT4.to_string(),
+                station_id: Station::Index,
+                expiry: EXPIRY.to_string(),
+            },
+        ];
+        assert_eq!(
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(100)),
+            vec![
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: PRODUCT4.to_string(),
+                    price: Price(3400),
+                    side: Side::Sell,
+                    volume: Volume(4),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: PRODUCT1.to_string(),
+                    price: Price(1100),
+                    side: Side::Buy,
+                    volume: Volume(4),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: PRODUCT2.to_string(),
+                    price: Price(1300),
+                    side: Side::Buy,
+                    volume: Volume(4),
+                    order_type: OrderType::Ioc,
+                },
+                AddMessage {
+                    message_type: MessageType::Add,
+                    product: PRODUCT3.to_string(),
+                    price: Price(600),
+                    side: Side::Buy,
+                    volume: Volume(4),
                     order_type: OrderType::Ioc,
                 },
             ],
@@ -365,7 +474,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -449,7 +558,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -536,7 +645,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -619,7 +728,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -703,7 +812,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -787,7 +896,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![
                 AddMessage {
                     message_type: MessageType::Add,
@@ -871,7 +980,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![],
         );
     }
@@ -922,7 +1031,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            find_arbs(&[&books[0], &books[1], &books[2], &books[3]]),
+            find_arbs(&[&books[0], &books[1], &books[2], &books[3]], Price(0)),
             vec![],
         );
     }

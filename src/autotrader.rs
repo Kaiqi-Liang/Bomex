@@ -3,6 +3,7 @@ use crate::{
     book::Book,
     feed::{HasSequence, Message},
     order::OrderAddedMessage,
+    types::Price,
     username::Username,
 };
 use futures_util::stream::{SplitStream, StreamExt};
@@ -223,7 +224,7 @@ impl AutoTrader {
                 if !index_enabled!(index, enabled_books, orders_to_wait) {
                     continue;
                 }
-                let orders = find_arbs(index);
+                let orders = find_arbs(index, Price(500));
                 for order in orders.iter() {
                     let position = self
                         .books
