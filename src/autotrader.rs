@@ -49,7 +49,7 @@ macro_rules! send_order {
 }
 
 macro_rules! index_enabled {
-    ($index:ident, $enabled_books:expr, $orders_to_wait:ident) => {
+    ($index:ident, $enabled_books:ident, $orders_to_wait:ident) => {
         $index.iter().all(|book| {
             *$enabled_books
                 .lock()
@@ -59,7 +59,7 @@ macro_rules! index_enabled {
                 && $orders_to_wait.lock().unwrap().get(&book.product).is_none()
         })
     };
-    ($index:ident, $enabled_books:expr) => {
+    ($index:ident, $enabled_books:ident) => {
         $index.iter().all(|book| {
             *$enabled_books
                 .lock()
@@ -293,12 +293,12 @@ impl AutoTrader {
                                     dbg!(err);
                                 }
                             }
-                            // Reenable book after receiving a response and setting orders to wait
+                            // Reenable book after receiving a response
                             enabled_books
                                 .lock()
                                 .unwrap()
                                 .entry(order.product.clone())
-                                .and_modify(|enabled| *enabled = false);
+                                .and_modify(|enabled| *enabled = true);
                         });
                     }
                 }
