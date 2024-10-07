@@ -81,7 +81,7 @@ impl Book {
         }
     }
 
-    #[allow(unused)]
+    #[allow(dead_code)]
     pub fn bbo(&self) -> (Option<PriceLevel>, Option<PriceLevel>) {
         (
             self.bids.last_key_value().map(|best_bid| best_bid.into()),

@@ -44,15 +44,15 @@ impl PartialEq for Observation {
 
 impl Eq for Observation {}
 
-#[allow(unused)]
+#[allow(dead_code)]
 pub fn poll_observations() {
     let observations = Arc::new(std::sync::Mutex::new(HashMap::new()));
     let observations_clone = observations.clone();
     tokio::spawn(async move {
         loop {
             let result = get_latest_observations(observations_clone.clone()).await;
-            if result.is_err() {
-                dbg!(result);
+            if let Err(err) = result {
+                dbg!(err);
             }
         }
     });

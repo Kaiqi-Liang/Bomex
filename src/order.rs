@@ -19,13 +19,13 @@ pub struct AddMessage {
 #[derive(Debug, Deserialize)]
 pub struct OrderAddedMessage {
     pub id: String,
-    #[allow(unused)]
+    #[allow(dead_code)]
     side: Side,
-    #[allow(unused)]
+    #[allow(dead_code)]
     price: Price,
     pub filled: Volume,
     pub resting: Volume,
-    #[allow(unused)]
+    #[allow(dead_code)]
     owner: Username,
 }
 
@@ -50,16 +50,16 @@ pub struct BulkDeleteMessage {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MessageType {
     Add,
-    #[allow(unused)]
+    #[allow(dead_code)]
     Delete,
-    #[allow(unused)]
+    #[allow(dead_code)]
     BulkDelete,
 }
 
-#[allow(unused)]
 #[derive(PartialEq, Debug, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum OrderType {
+    #[allow(dead_code)]
     Day,
     Ioc,
 }

@@ -101,11 +101,13 @@ pub struct SettlementMessage {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(unused)]
 pub struct IndexMessage {
+    #[allow(dead_code)]
     index_id: u32,
+    #[allow(dead_code)]
     index_name: String,
     #[serde(deserialize_with = "deserialize_station_ids")]
+    #[allow(dead_code)]
     station_ids: Vec<Station>,
     pub sequence: u32,
 }
